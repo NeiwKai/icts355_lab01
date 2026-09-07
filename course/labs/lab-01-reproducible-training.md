@@ -143,22 +143,22 @@ It must state: what the problem is, what the data is and where it comes from, th
 expected metric and tolerance, and roughly how long it takes.
 
 ```bash
-make reproduce       # the one command
+time (make reproduce && make verify)      # the one command
 ```
 
 ---
 
 ## Deliverables checklist
 
-- [ ] Repository with the layout above, pushed and accessible
-- [ ] Lock file with hashes; base image pinned by digest
-- [ ] `Dockerfile` building for `linux/amd64`, non-root, no baked credentials
-- [ ] Image pushed to your provider's registry
-- [ ] DVC remote configured and `dvc push` completed
-- [ ] Leakage test in `tests/test_data.py`, passing
-- [ ] Five or more tracked runs with params, metrics, data version, commit SHA, and artifact
-- [ ] `README.md` with the one command, expected metric, and tolerance
-- [ ] `cloud.env` absent from Git history — check, do not assume
+- [x] Repository with the layout above, pushed and accessible
+- [x] Lock file with hashes; base image pinned by digest
+- [x] `Dockerfile` building for `linux/amd64`, non-root, no baked credentials
+- [x] Image pushed to your provider's registry
+- [x] DVC remote configured and `dvc push` completed
+- [x] Leakage test in `tests/test_data.py`, passing
+- [x] Five or more tracked runs with params, metrics, data version, commit SHA, and artifact
+- [x] `README.md` with the one command, expected metric, and tolerance
+- [x] `cloud.env` absent from Git history — check, do not assume
 
 ## Acceptance criteria
 
