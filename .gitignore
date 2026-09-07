@@ -1,4 +1,5 @@
 # NEVER commit this. Real credentials and account identifiers live here.
+*.env
 cloud.env
 
 # DVC manages these; Git must not.
