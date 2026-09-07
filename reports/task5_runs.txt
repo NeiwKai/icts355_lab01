@@ -1,0 +1,103 @@
+ITCS355 Lab 1 - Task 5 MLflow Runs
+==================================
+Date: Mon Sep  7 17:35:34 +07 2026
+
+==================================
+RUN: rf-100-depth4
+==================================
+Hyperparameters:
+  n_estimators     = 100
+  max_depth        = 4
+  min_samples_leaf = 5
+  seed             = 42
+
+MLflow output:
+{
+  "seed": 42,
+  "data_fingerprint": "422cccb9136e8140",
+  "val_roc_auc": 0.8580011422044546,
+  "val_pr_auc": 0.4970429819019267,
+  "test_roc_auc": 0.832776636947311,
+  "test_pr_auc": 0.4322852424550876
+}
+
+==================================
+RUN: rf-200-depth4
+==================================
+Hyperparameters:
+  n_estimators     = 200
+  max_depth        = 4
+  min_samples_leaf = 5
+  seed             = 42
+
+MLflow output:
+{
+  "seed": 42,
+  "data_fingerprint": "422cccb9136e8140",
+  "val_roc_auc": 0.8579440319817249,
+  "val_pr_auc": 0.49973685139840435,
+  "test_roc_auc": 0.8347781445764342,
+  "test_pr_auc": 0.43240704742079394
+}
+
+==================================
+RUN: rf-300-depth4
+==================================
+Hyperparameters:
+  n_estimators     = 300
+  max_depth        = 4
+  min_samples_leaf = 5
+  seed             = 42
+
+MLflow output:
+{
+  "seed": 42,
+  "data_fingerprint": "422cccb9136e8140",
+  "val_roc_auc": 0.8577555682467161,
+  "val_pr_auc": 0.4963053415292443,
+  "test_roc_auc": 0.8351940422656027,
+  "test_pr_auc": 0.4371027755689759
+}
+
+==================================
+RUN: rf-200-depth8
+==================================
+Hyperparameters:
+  n_estimators     = 200
+  max_depth        = 8
+  min_samples_leaf = 5
+  seed             = 42
+
+MLflow output:
+{
+  "seed": 42,
+  "data_fingerprint": "422cccb9136e8140",
+  "val_roc_auc": 0.8569503141062251,
+  "val_pr_auc": 0.49129789643384125,
+  "test_roc_auc": 0.8391580671154896,
+  "test_pr_auc": 0.4416197302606671
+}
+
+==================================
+RUN: rf-200-depth12
+==================================
+Hyperparameters:
+  n_estimators     = 200
+  max_depth        = 12
+  min_samples_leaf = 5
+  seed             = 42
+
+MLflow output:
+{
+  "seed": 42,
+  "data_fingerprint": "422cccb9136e8140",
+  "val_roc_auc": 0.8554654483152484,
+  "val_pr_auc": 0.482822414290984,
+  "test_roc_auc": 0.8338098827688389,
+  "test_pr_auc": 0.43007292476220244
+}
+
+==================================
+All 5 runs completed.
+Log saved to: reports/task5_runs.txt
+==================================
