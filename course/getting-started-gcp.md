@@ -330,13 +330,13 @@ and running `make reproduce` there, before you submit.
 
 ## What to have done before Session 2
 
-- [ ] `make cloud-check` all green, output posted in the course channel
-- [ ] Budget alert set
-- [ ] `make reproduce` works from a **fresh clone**, not just your working directory
-- [ ] The `expected test_roc_auc:` line in the root `README.md` re-measured and updated
-- [ ] `cloudlayer/gcp.py` implements `upload`, `download`, `push_image`
-- [ ] `make portability-audit` passes
-- [ ] `cloud.env` is **not** in `git status`
+- [x] `make cloud-check` all green, output posted in the course channel
+- [x] Budget alert set
+- [x] `make reproduce` works from a **fresh clone**, not just your working directory
+- [x] The `expected test_roc_auc:` line in the root `README.md` re-measured and updated
+- [x] `cloudlayer/gcp.py` implements `upload`, `download`, `push_image`
+- [x] `make portability-audit` passes
+- [x] `cloud.env` is **not** in `git status`
 
 Lab 1 is worth 8 marks, awarded met-or-not-met: `make reproduce` works from a fresh clone on a
 machine that is not yours, and the metric matches your claim. There is no partial credit for a
