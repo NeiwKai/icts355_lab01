@@ -115,6 +115,9 @@ answer, and we compare answers in Session 2. An answer that refuses to choose sc
 
 ## Notes for the grader
 
+There was also a permission issue that on MacOS haven't stump on this, but on another machine
+Gentoo Linux, there was a permission with `reports` that require write access for docker.
+So the new command also include the solution for the problem.
 Task5 outputs are in `reports/task5_runs.txt`. The script use to test is in `scripts/lab1_task5.sh`.
 
 ---
