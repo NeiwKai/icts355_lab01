@@ -18,10 +18,10 @@ whether a stranger can reproduce it is.
 ## Reproduce
 
 ```bash
-make reproduce
+time(mkdir -p reports && chmod 777 reports && make setup && make reproduce && make verify)
 ```
 
-expected test_roc_auc: <0.8482> ± 0.010; make verify 
+expected test_roc_auc: 0.8482 ± 0.010; make verify 
 
 Runtime: about 40 seconds on 4 cores. No cloud account or credentials needed for this command —
 that is deliberate, and it is why a grader can run it.
