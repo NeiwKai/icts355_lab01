@@ -143,7 +143,7 @@ It must state: what the problem is, what the data is and where it comes from, th
 expected metric and tolerance, and roughly how long it takes.
 
 ```bash
-time (make reproduce && make verify)      # the one command
+time(mkdir -p reports && chmod 777 reports && make setup && make reproduce && make verify)      # the one command
 ```
 
 ---
