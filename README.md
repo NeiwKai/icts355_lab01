@@ -115,7 +115,7 @@ answer, and we compare answers in Session 2. An answer that refuses to choose sc
 
 ## Notes for the grader
 
-None
+Task5 outputs are in `reports/task5_runs.txt`. The script use to test is in `scripts/lab1_task5.sh`.
 
 ---
 
