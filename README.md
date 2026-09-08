@@ -115,9 +115,25 @@ answer, and we compare answers in Session 2. An answer that refuses to choose sc
 
 ## Notes for the grader
 
+There was a problem with Makefile on `make reproduce`. It is impossible to get the operation done
+because it will run `python` first.
+```bash
+╰─± make -n reproduce
+python scripts/make_dataset.py --seed 20260101
+docker buildx build --platform linux/amd64 -t itcs355-lab1:0e83005 --load .
+docker run --rm \
+	  -v "$PWD/data:/app/data:ro" \
+	  -v "$PWD/reports:/app/reports" \
+	  -e MLFLOW_TRACKING_URI=sqlite:////app/reports/mlflow.db \
+	  itcs355-lab1:0e83005 --seed 20260101 --metrics-out /app/reports/metrics.json
+```
+Which the python script require additional library to be installed first such as `numpy`.
+It is impossible to not run `make setup` first to install additional required packages.
+
 There was also a permission issue that on MacOS haven't stump on this, but on another machine
 Gentoo Linux, there was a permission with `reports` that require write access for docker.
-So the new command also include the solution for the problem.
+So the `mkdir -p reports && chmod 777 reports` is required.
+
 Task5 outputs are in `reports/task5_runs.txt`. The script use to test is in `scripts/lab1_task5.sh`.
 
 ---
