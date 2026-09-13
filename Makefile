@@ -23,8 +23,9 @@ cloud-check: ## Resolve the eight capability slots
 
 data: ## Generate the default dataset (deterministic)
 	# Use docker instead of host machine python
+	mkdir -p data
+	chmod 777 data
 	docker run --rm  \
-		--user "$$(id -u):$$(id -g)" \
 		-v "$$PWD:/app" \
 		-w /app python:3.11-slim \
 		bash -c "pip install --quiet numpy pandas && python scripts/make_dataset.py --seed $(SEED)"
