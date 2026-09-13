@@ -11,14 +11,14 @@ whether a stranger can reproduce it is.
 
 > **This README is graded.** A grader with Docker and nothing else from your setup runs one
 > command and compares the result against the claim below. Edit every `<...>` and delete the
-> instruction blocks marked **REPLACE** before submitting.
+> instruction blocks marked **REMOVED** before submitting.
 
 ---
 
 ## Reproduce
 
 ```bash
-time(mkdir -p reports && chmod 777 reports && make setup && make reproduce && make verify)
+make reproduce
 ```
 
 expected test_roc_auc: 0.8482 ± 0.010; make verify 
@@ -129,6 +129,7 @@ docker run --rm \
 ```
 Which the python script require additional library to be installed first such as `numpy`.
 It is impossible to not run `make setup` first to install additional required packages.
+The solution is modify the `Makefile` to use docker instead of host machine python.
 
 There was also a permission issue that on MacOS haven't stump on this, but on another machine
 Gentoo Linux, there was a permission with `reports` that require write access for docker.
@@ -147,7 +148,7 @@ Task5 outputs are in `reports/task5_runs.txt`. The script use to test is in `scr
 - [x] Image builds for `linux/amd64` and is pushed, digest-pinned
 - [x] `dvc push` completed; a grader can `dvc pull`
 - [x] Five or more tracked runs with params, metrics, data fingerprint, and commit SHA
-- [x] Every **REPLACE** block above is gone (the course-materials block at the top stays)
+- [x] Every **REMOVED** block above is gone (the course-materials block at the top stays)
 - [x] `git log -p | grep -i -E "secret|password|AKIA|BEGIN PRIVATE"` returns nothing
 
 That last check is not optional. A credential in Git history is an automatic deduction in this
