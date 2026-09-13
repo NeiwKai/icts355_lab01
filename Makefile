@@ -22,7 +22,9 @@ cloud-check: ## Resolve the eight capability slots
 	python scripts/cloud_check.py
 
 data: ## Generate the default dataset (deterministic)
-	python scripts/make_dataset.py --seed $(SEED)
+	# Use docker instead of host machine python
+	docker run --rm -v "$$PWD/:app" -w /app python:3.11-slim bash -c \
+		"pip install --quiet numpy pandas && python scripts/make_dataset.py -- seed $(SEED)"
 
 test: ## Run data contract and split property tests
 	pytest -q tests/
