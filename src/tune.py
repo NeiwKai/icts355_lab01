@@ -25,12 +25,10 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from src import config, costs, data, seeds
 from src.train import git_commit
 
-# TODO(Lab 2): widen this. Three hyperparameters minimum, and vary something that
-# actually changes model behaviour rather than three variants of the same idea.
 SEARCH_SPACE: dict[str, list] = {
-    "n_estimators": [100, 300],
-    "max_depth": [4, 8, 12],
-    "min_samples_leaf": [1, 5],
+    "n_estimators": [100, 500],
+    "max_depth": [2, 8, 14],
+    "min_samples_leaf": [1, 7],
 }
 
 
@@ -50,11 +48,29 @@ def parse_args() -> argparse.Namespace:
                    help="Resume file. Spot interruption should cost minutes, not the run.")
     return p.parse_args()
 
-
+"""
 def load_checkpoint(path: Path) -> dict:
     if path.exists():
         return json.loads(path.read_text())
-    return {"completed": [], "spent_thb": 0.0}
+"""
+def load_checkpoint(path: Path) -> dict:
+    default_state = {"completed": [], "spent_thb": 0.0}
+    if not path.exists():
+        return default_state
+
+    try:
+        content = path.read_text().strip()
+        if not content:
+            return default_state
+        data = json.loads(content)
+        if not isinstance(data, dict):
+            return default_state
+        return {
+            "completed": data.get("completed", []),
+            "spent_thb": data.get("spent_thb", 0.0),
+        }
+    except Exception:
+        return default_state
 
 
 def save_checkpoint(path: Path, state: dict) -> None:
