@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any
+from google.cloud import aiplatform, storage
 
 
 class CloudAdapter(ABC):
@@ -81,7 +82,60 @@ class CloudAdapter(ABC):
         Deletion is asynchronous on all three providers — returning successfully does
         not mean the resource is gone. Re-check, and check the bill.
         """
-        raise NotImplementedError("Lab 5")
+        aiplatform.init(
+            project=self.cfg.project_id,
+            location=self.cfg.region,
+        )
+
+        deleted_resources: list[str] = []
+
+        # Active states eligible for cancellation
+        active_states = {
+            aiplatform.gapic.JobState.JOB_STATE_PENDING,
+            aiplatform.gapic.JobState.JOB_STATE_RUNNING,
+            aiplatform.gapic.JobState.JOB_STATE_QUEUED,
+        }
+
+        # 1. Cancel Active Custom Jobs (Lab 2)
+        try:
+            jobs = aiplatform.CustomJob.list()
+            for job in jobs:
+                # Check if job state is active
+                if job.state in active_states:
+                    # Match labels in Python instead of using GCP API server-side filter
+                    job_labels = getattr(job, "labels", {}) or {}
+                    if all(job_labels.get(k) == v for k, v in tags.items()):
+                        res_name = job.resource_name
+                        job.cancel()
+                        deleted_resources.append(f"CustomJob (Cancelled): {res_name}")
+        except Exception as e:
+            print(f"Error cancelling custom jobs: {e}")
+
+        # 2. Delete Deployed Endpoints (Lab 3)
+        try:
+            endpoints = aiplatform.Endpoint.list()
+            for endpoint in endpoints:
+                ep_labels = getattr(endpoint, "labels", {}) or {}
+                if all(ep_labels.get(k) == v for k, v in tags.items()):
+                    res_name = endpoint.resource_name
+                    endpoint.delete(force=True)
+                    deleted_resources.append(f"Endpoint: {res_name}")
+        except Exception as e:
+            print(f"Error deleting endpoints: {e}")
+
+        # 3. Delete Registered Models (Lab 2 / Lab 3)
+        try:
+            models = aiplatform.Model.list()
+            for model in models:
+                m_labels = getattr(model, "labels", {}) or {}
+                if all(m_labels.get(k) == v for k, v in tags.items()):
+                    res_name = model.resource_name
+                    model.delete()
+                    deleted_resources.append(f"Model: {res_name}")
+        except Exception as e:
+            print(f"Error deleting models: {e}")
+
+        return deleted_resources
 
 
 class LocalAdapter(CloudAdapter):
