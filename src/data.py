@@ -56,6 +56,17 @@ def load_raw(path: Path) -> pd.DataFrame:
         )
     return pd.read_csv(path)
 
+# Load handler for both local and cloud
+def load_data(cfg):
+    local_path = Path(cfg.raw_path)
+    if local_path.exists():
+        return pd.read_csv(local_path)
+    
+    # Read directly from GCS/S3 BLOB_URI dynamically
+    gcs_csv_url = f"{cfg.blob_uri}/data/raw/sensors.csv"
+    print(f"Loading data directly from URI: {gcs_csv_url}")
+    return pd.read_csv(gcs_csv_url)
+
 
 def data_fingerprint(path: Path) -> str:
     """Content hash of the raw file. Logged with every run so a metric can be traced to data.
