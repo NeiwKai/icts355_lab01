@@ -9,8 +9,6 @@ is roughly 30% of on-demand across all three providers — SPOT_FACTOR below.
 """
 from __future__ import annotations
 
-# TODO(Lab 2): verify each of these against your provider's pricing page for YOUR region,
-# and record in reports/lab2-comparison.md when you checked and what you found.
 PRICE_TABLE: dict[str, dict[str, float]] = {
     "local": {"local": 0.0},
     "aws": {
@@ -25,9 +23,9 @@ PRICE_TABLE: dict[str, dict[str, float]] = {
         "Standard_NC4as_T4_v3": 24.5,
     },
     "gcp": {
-        "n1-standard-4": 7.6,
-        "e2-standard-4": 6.4,
-        "n1-standard-4+t4": 25.2,
+        "n1-standard-4": 8.93,
+        "e2-standard-4": 6.30,
+        "n4-highcpu-2":  3.60,
     },
 }
 
