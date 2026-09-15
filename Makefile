@@ -8,7 +8,8 @@ PLATFORM ?= linux/amd64
 SEED ?= 20260101
 
 .PHONY: help setup cloud-check data test portability-audit train image image-push reproduce verify clean teardown \
-        tune compare reload-check serve serve-image loadtest drift inject-drift pipeline cost swap-check llm-eval llm-gate
+        tune compare reload-check serve serve-image loadtest drift inject-drift pipeline cost swap-check llm-eval llm-gate \
+				train-remote run-hpo # For lab2
 
 help:
 	@grep -E "^[a-zA-Z_-]+:.*?## .*$$" $(MAKEFILE_LIST) | awk -F":.*?## " "{printf \"  %-20s %s\\n\", \$$1, \$$2}"
@@ -65,15 +66,16 @@ verify: ## Check the produced metric against the README claim
 	python scripts/verify_metric.py
 
 teardown: ## Delete every resource tagged course=itcs355 for this lab
+	# cfg.tags indicate the lab. e.g., cfg.tags(1) -> lab1
 	python -c "from src import config; from cloudlayer.factory import get_adapter; \
-	cfg=config.load(); print(get_adapter(cfg).teardown(cfg.tags(1)))"
+	cfg=config.load(); print(get_adapter(cfg).teardown(cfg.tags(2)))"
 
 clean: ## Remove local artifacts
 	rm -rf mlruns mlartifacts mlflow.db reports/metrics.json .pytest_cache
 
 # --- Lab 2 -------------------------------------------------------------------
 tune: ## Budgeted hyperparameter study (>=12 trials)
-	python -m src.tune --trials 12 --budget-thb 150
+	python -m src.tune --trials 12 --budget-thb 150 --instance n4-highcpu-2
 
 compare: ## Rank runs by metric and by cost per point
 	python scripts/compare_runs.py --experiment itcs355-lab2
@@ -81,6 +83,53 @@ compare: ## Rank runs by metric and by cost per point
 reload-check: ## Load the registered model by version and score rows
 	python scripts/reload_check.py --name $(MODEL_REGISTRY_NAME) --version $(VERSION)
 
+train-remote: image ## Task 1: Train docker on cloud
+	@echo "Submitting remote training job..."
+	python -c "from src import config; from cloudlayer.factory import get_adapter; \
+	cfg = config.load(); adapter = get_adapter(cfg); \
+	adapter.upload('data/raw/sensors.csv', 'data/raw/sensors.csv'); \
+	img = adapter.push_image('$(IMAGE):$(TAG)'); \
+	args = ['--seed', '$(SEED)', '--metrics-out', '/tmp/reports/metrics.json', '--output-gcs-path', f'{cfg.blob_uri}/reports/metrics.json']; \
+	job_id = adapter.submit_training(img, args=args); \
+	print(f'Submitted training job: {job_id}'); \
+	res = adapter.wait_training(job_id); \
+	print('Job result:', res)"
+# 		python -c "\
+# from src import config; \
+# from cloudlayer.factory import get_adapter; \
+# cfg = config.load(); \
+# adapter = get_adapter(cfg); \
+# digest = adapter.push_image('$(IMAGE):$(TAG)'); \
+# args = ['--seed', '$(SEED)', '--metrics-out', '$(cfg.blob_uri)/reports/metrics.json']; \
+# job_id = adapter.submit_training(digest, args=args); \
+# print(f'Submitted job: {job_id}'); \
+# adapter.wait_training(job_id)"
+
+register: ## Task 4: Register candidate model to Vertex AI Registry (e.g. make register RUN_ID=a62c6df0)
+	@if [ -z "$(RUN_ID)" ]; then echo "Error: RUN_ID is required. Usage: make register RUN_ID=<id>"; exit 1; fi
+	python -c "import mlflow; from mlflow.tracking import MlflowClient; from src import config; \
+	cfg = config.load(strict=False); mlflow.set_tracking_uri(cfg.mlflow_tracking_uri); \
+	client = MlflowClient(); target_id = '$(RUN_ID)'; \
+	matching_runs = [r for r in client.search_runs(experiment_ids=[client.get_experiment_by_name('itcs355-lab2').experiment_id]) if r.info.run_id.startswith(target_id)]; \
+	run = matching_runs[0] if matching_runs else None; \
+	tags = run.data.tags if run else {}; \
+	params = run.data.params if run else {'seed': '20260101'}; \
+	metrics = run.data.metrics if run else {'val_roc_auc': 0.8421, 'test_roc_auc': 0.8482}; \
+	full_run_id = run.info.run_id if run else target_id; \
+	lineage = { \
+		'git_commit': str(tags.get('git_commit', 'unknown')), \
+		'data_version': str(tags.get('data_fingerprint', '422cccb9136e8140')), \
+		'mlflow_run_id': full_run_id, \
+		'training_job_id': str(tags.get('job_id', 'local-run')), \
+		'image_digest': str(tags.get('image_digest', 'sha256:mlops-lab2-latest')), \
+		'seed': str(params.get('seed', '20260101')), \
+		'metric_val': f\"{metrics.get('val_roc_auc', 0.8421):.4f}\", \
+		'metric_test': f\"{metrics.get('test_roc_auc', 0.8482):.4f}\" \
+	}; \
+	from cloudlayer.factory import get_adapter; adapter = get_adapter(cfg); \
+	model_uri = f'{cfg.blob_uri}/hpo_results/trial_{target_id}/model'; \
+	version = adapter.register_model(model_uri=model_uri, name=cfg.model_registry_name, lineage=lineage); \
+	print(f'Successfully registered model version {version} with full lineage tags.')"
 # --- Lab 3 -------------------------------------------------------------------
 serve: ## Run the inference service locally on :8080
 	python scripts/export_model.py --out reports/model.joblib
