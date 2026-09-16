@@ -83,7 +83,7 @@ compare: ## Rank runs by metric and by cost per point
 reload-check: ## Load the registered model by version and score rows
 	python scripts/reload_check.py --name $(MODEL_REGISTRY_NAME) --version $(VERSION)
 
-train-remote: image ## Task 1: Train docker on cloud
+train-remote: data image-push ## Task 1: Train docker on cloud
 	@echo "Submitting remote training job..."
 	python -c "from src import config; from cloudlayer.factory import get_adapter; \
 	cfg = config.load(); adapter = get_adapter(cfg); \
