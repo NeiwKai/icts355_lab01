@@ -14,3 +14,5 @@ fastapi==0.141.1
 httpx2==2.12.0
 greenlet # fix docker build error, somehow requirements.txt got greenlet>=1
 smart_open[gcs] # For job to get data
+google-cloud-storage
+google-cloud-aiplatform
