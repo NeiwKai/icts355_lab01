@@ -32,52 +32,49 @@ class GcpAdapter(CloudAdapter):
         Returns:
             gs://bucket/prefix/key
         """
-        parsed = urlparse(self.cfg.blob_uri)
-
-        if parsed.scheme != "gs":
-            raise ValueError(
-                f"BLOB_URI must use gs://, got {self.cfg.blob_uri!r}"
-            )
-
-        bucket_name = parsed.netloc
-        prefix = parsed.path.lstrip("/").rstrip("/")
-
-        blob_name = f"{prefix}/{key}" if prefix else key
+        if key.startswith("gs://"):
+            parsed_key = urlparse(key)
+            bucket_name = parsed_key.netloc
+            blob_name = parsed_key.path.lstrip("/")
+        else:
+            parsed = urlparse(self.cfg.blob_uri)
+            if parsed.scheme != "gs":
+                raise ValueError(f"BLOB_URI must use gs://, got {self.cfg.blob_uri!r}")
+            bucket_name = parsed.netloc
+            prefix = parsed.path.lstrip("/").rstrip("/")
+            blob_name = f"{prefix}/{key}" if prefix else key
 
         storage_client = storage.Client(project=self.cfg.project_id)
-
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
-
         blob.upload_from_filename(local_path)
 
         return f"gs://{bucket_name}/{blob_name}"
         #raise NotImplementedError("TODO Lab 1: blob.upload_from_filename, return the gs:// URI")
 
-    def download(self, uri: str, local_path: str) -> None:
-        """Download a GCS object to a local path."""
-        parsed = urlparse(uri)
-
-        if parsed.scheme != "gs":
-            raise ValueError(
-                f"URI must use gs://, got {uri!r}"
-            )
-
+    def download(self, key: str, local_path: str) -> str:
+        """Download a blob from GCS under self.cfg.blob_uri to a local file path."""
+        parsed = urlparse(self.cfg.blob_uri)
         bucket_name = parsed.netloc
-        blob_name = parsed.path.lstrip("/")
+        prefix = parsed.path.lstrip("/").rstrip("/")
 
-        if not bucket_name or not blob_name:
-            raise ValueError(f"Invalid GCS URI: {uri!r}")
+        # Construct destination blob key
+        blob_name = f"{prefix}/{key}" if prefix else key
 
-        Path(local_path).parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        bucket = self.client.bucket(bucket_name)
+        storage_client = storage.Client(project=self.cfg.project_id)
+        bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
 
+        # Ensure parent local directory exists
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # Fallback check if blob doesn't exist under subpath prefix
+        if not blob.exists():
+            blob = bucket.blob(key)
+
         blob.download_to_filename(local_path)
+        print(f"GCPAdapter: Downloaded gs://{bucket_name}/{blob.name} to {local_path}")
+        return local_path
         #raise NotImplementedError("TODO Lab 1: blob.download_to_filename, creating parents")
 
     def push_image(self, local_tag: str) -> str:
@@ -168,67 +165,76 @@ class GcpAdapter(CloudAdapter):
 
     ## Lab 2: submit_training(), wait_training(), register_model()
     def submit_training(
-            self,
-            image_uri: str,
-            args: list[str] | None = None,
-            instance_type: str = "n4-highcpu-2",
-            use_spot: bool =True
-        ) -> str:
-            """Submit a Vertex AI Custom Training Job using a remote container image."""
-            aiplatform.init(
-                project=self.cfg.project_id,
-                location=self.cfg.region,
+        self,
+        image_uri: str,
+        args: list[str] | None = None,
+        instance_type: str = "e2-standard-4",
+        use_spot: bool = True
+    ) -> str:
+        """Submit a Vertex AI Custom Training Job using a remote container image."""
+        aiplatform.init(
+            project=self.cfg.project_id,
+            location=self.cfg.region,
+        )
+
+        # 1. Define Machine and Container specs with explicit environment variables
+        machine_spec = aiplatform_v1.MachineSpec(machine_type=instance_type)
+        
+        # Pass CLOUD_PROVIDER and BLOB_URI into the container environment
+        env_vars = [
+            aiplatform_v1.EnvVar(name="CLOUD_PROVIDER", value="gcp"),
+            aiplatform_v1.EnvVar(name="BLOB_URI", value=self.cfg.blob_uri),
+            aiplatform_v1.EnvVar(name="GCP_PROJECT_ID", value=self.cfg.project_id),
+            aiplatform_v1.EnvVar(name="MLFLOW_TRACKING_URI", value=getattr(self.cfg, "mlflow_tracking_uri", "")),
+        ]
+
+        container_spec = aiplatform_v1.ContainerSpec(
+            image_uri=image_uri,
+            args=args or [],
+            env=env_vars,
+        )
+
+        # 2. WorkerPoolSpec (no scheduling here)
+        worker_pool_spec = aiplatform_v1.WorkerPoolSpec(
+            machine_spec=machine_spec,
+            replica_count=1,
+            container_spec=container_spec,
+        )
+
+        # 3. Scheduling belongs on the job specification level
+        scheduling = None
+        if use_spot:
+            scheduling = aiplatform_v1.Scheduling(
+                disable_retries=False,
+                restart_job_on_worker_restart=True,
             )
 
-            # 1. Define Machine and Container specs
-            machine_spec = aiplatform_v1.MachineSpec(machine_type=instance_type)
-            container_spec = aiplatform_v1.ContainerSpec(
-                image_uri=image_uri,
-                args=args or [],
-            )
+        # 4. Construct JobSpec explicitly
+        job_spec = aiplatform_v1.CustomJobSpec(
+            worker_pool_specs=[worker_pool_spec],
+            scheduling=scheduling,
+            base_output_directory=aiplatform_v1.GcsDestination(
+                output_uri_prefix=self.cfg.blob_uri
+            ),
+        )
 
-            # 2. WorkerPoolSpec (no scheduling here)
-            worker_pool_spec = aiplatform_v1.WorkerPoolSpec(
-                machine_spec=machine_spec,
-                replica_count=1,
-                container_spec=container_spec,
-            )
+        job = aiplatform.CustomJob(
+            display_name=f"lab2-training-{self.cfg.model_registry_name}",
+            staging_bucket=self.cfg.blob_uri,
+            worker_pool_specs=[worker_pool_spec],
+            labels=self.cfg.tags(2), # The lab id. e.g, self.cfg.tags(1) -> lab1
+        )
 
-            # 3. Scheduling belongs on the job specification level
-            scheduling = None
-            if use_spot:
-                scheduling = aiplatform_v1.Scheduling(
-                    disable_retries=False,
-                    restart_job_on_worker_restart=True,
-                )
+        # Attach scheduling to underlying proto spec
+        if scheduling:
+            job._gca_resource.job_spec.scheduling = scheduling
 
-            # 4. Construct JobSpec explicitly
-            job_spec = aiplatform_v1.CustomJobSpec(
-                worker_pool_specs=[worker_pool_spec],
-                scheduling=scheduling,
-                base_output_directory=aiplatform_v1.GcsDestination(
-                    output_uri_prefix=self.cfg.blob_uri
-                ),
-            )
+        job.submit(
+            service_account=getattr(self.cfg, "service_account", None),
+        )
 
-            job = aiplatform.CustomJob(
-                display_name=f"lab2-training-{self.cfg.model_registry_name}",
-                staging_bucket=self.cfg.blob_uri,
-                worker_pool_specs=[worker_pool_spec],
-                labels=self.cfg.tags(2), # The lab id. e.g, self.cfg.tags(1) -> lab1
-            )
-
-            # Attach scheduling to underlying proto spec
-            if scheduling:
-                job._gca_resource.job_spec.scheduling = scheduling
-
-            job.submit(
-                service_account=getattr(self.cfg, "service_account", None),
-            )
-
-
-            # Access resource_name from the underlying CustomJob instance created during .run()
-            return job.resource_name
+        # Access resource_name from the underlying CustomJob instance created during .run()
+        return job.resource_name
 
     def wait_training(self, job_id: str) -> None:
             """Block until the Vertex AI Custom Training Job completes successfully."""
