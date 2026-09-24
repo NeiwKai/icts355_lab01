@@ -33,51 +33,22 @@ log = logging.getLogger("service")
 
 STATE: dict[str, Any] = {"model": None, "version": os.environ.get("MODEL_VERSION", "unknown")}
 
-
 def _load_model():
-    """Load once, at startup. Supports local POSIX paths and remote gs:// URIs."""
+    """Load once at startup via Cloud Layer abstraction."""
     from pathlib import Path
     import joblib
     import os
+    from src import config
+    from cloudlayer.factory import get_adapter
 
     raw_path = os.environ.get("MODEL_PATH", "/tmp/reports/model.joblib")
     log.info("Configured MODEL_PATH: '%s'", raw_path)
 
-    # 1. If it's already a local file that exists, load it directly
-    local_path = Path(raw_path)
-    if local_path.exists():
-        log.info("Loading existing model file from '%s'...", local_path)
-        return joblib.load(local_path)
-
-    # 2. If it's a GCS URI, download using google-cloud-storage SDK
-    if raw_path.startswith("gs://"):
-        try:
-            from google.cloud import storage
-        except ImportError as err:
-            raise RuntimeError(
-                "google-cloud-storage package is missing from container environment. "
-                "Add 'google-cloud-storage' to requirements.txt."
-            ) from err
-
-        clean_uri = raw_path.replace("gs://", "")
-        bucket_name, blob_path = clean_uri.split("/", 1)
-
-        local_target = Path("/tmp/reports/model.joblib")
-        local_target.parent.mkdir(parents=True, exist_ok=True)
-
-        log.info("Downloading GCS artifact 'gs://%s/%s' -> '%s'...", bucket_name, blob_path, local_target)
-        client = storage.Client()
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(blob_path)
-
-        if not blob.exists():
-            raise RuntimeError(f"GCS artifact not found at 'gs://{bucket_name}/{blob_path}'")
-
-        blob.download_to_filename(str(local_target))
-        local_path = local_target
-
-    if not local_path.exists():
-        raise RuntimeError(f"No model file found at resolved path '{local_path}'")
+    # Resolve and download model via cloudlayer adapter
+    cfg = config.load()
+    adapter = get_adapter(cfg)
+    
+    local_path = adapter.download_artifact(raw_path, "/tmp/reports/model.joblib")
 
     log.info("Unpickling model from '%s'...", local_path)
     return joblib.load(local_path)

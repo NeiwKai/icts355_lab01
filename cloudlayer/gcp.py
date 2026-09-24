@@ -280,6 +280,40 @@ class GcpAdapter(CloudAdapter):
                     f"Error: {job.error}"
                 )
 
+    # For download model.joblib in app.py docker image
+    def download_artifact(self, raw_path: str, local_target_path: str) -> Path:
+        """Download an artifact from cloud storage or fallback to local path."""
+        target_path = Path(local_target_path)
+        
+        # If raw_path is a local file that already exists, return it
+        local_src = Path(raw_path)
+        if local_src.exists():
+            return local_src
+
+        # Download from GCS
+        if raw_path.startswith("gs://"):
+            from google.cloud import storage
+
+            clean_uri = raw_path.replace("gs://", "")
+            bucket_name, blob_path = clean_uri.split("/", 1)
+
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+
+            if not blob.exists():
+                raise RuntimeError(f"Cloud artifact not found at '{raw_path}'")
+
+            blob.download_to_filename(str(target_path))
+            return target_path
+
+        if not local_src.exists():
+            raise RuntimeError(f"No model file found at resolved path '{raw_path}'")
+
+        return local_src
+
     def register_model(self, model_uri: str, name: str) -> str:
         """Register model in registry with 8 lineage fields, and promote through Staging."""
         import subprocess
