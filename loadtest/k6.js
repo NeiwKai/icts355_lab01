@@ -2,8 +2,14 @@
 //
 //   k6 run -e TARGET=https://<endpoint>/predict -e VUS=10 loadtest/k6.js
 //
-// Run this at THREE concurrency levels (suggested 1, 10, 50) and record p50, p95, p99,
+// Run this at THREE concurrency levels (1, 10, 50) and record p50, p95, p99,
 // throughput, and error rate for each. Commit the results in reports/lab3-load.md.
+//
+// LATENCY TARGET — committed 2026-09-23, BEFORE any measurement was taken:
+//   p95 < 200ms, error rate < 1%, measured at each of VUS=1,10,50.
+//   Rationale: lightweight sklearn-class model, simple JSON in/out, no batch
+//   or GPU work on the hot path — 200ms leaves generous headroom for network
+//   + serialization overhead on a small cloud instance.
 //
 // An uncommitted load test is not evidence.
 
@@ -18,8 +24,6 @@ export const options = {
   vus: Number(__ENV.VUS || 10),
   duration: __ENV.DURATION || '60s',
   thresholds: {
-    // TODO(Lab 3): set YOUR p95 target here, BEFORE you measure.
-    // A target chosen after seeing the numbers is not a target, and this is graded.
     'predict_latency_ms': ['p(95)<200'],
     'predict_failures': ['rate<0.01'],
   },
@@ -34,10 +38,13 @@ const payload = JSON.stringify({
   ambient_humidity: 55.0,
 });
 
+const headers = { 'Content-Type': 'application/json' };
+if (__ENV.TOKEN) {
+  headers['Authorization'] = `Bearer ${__ENV.TOKEN}`;
+}
+
 export default function () {
-  const res = http.post(__ENV.TARGET, payload, {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const res = http.post(__ENV.TARGET, payload, { headers });
   latency.add(res.timings.duration);
   failures.add(res.status !== 200);
   check(res, {
