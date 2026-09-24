@@ -9,7 +9,8 @@ SEED ?= 20260101
 
 .PHONY: help setup cloud-check data test portability-audit train image image-push reproduce verify clean teardown \
         tune compare reload-check serve serve-image loadtest drift inject-drift pipeline cost swap-check llm-eval llm-gate \
-				train-remote run-hpo # For lab2
+				train-remote \ # For lab2
+				serve-image-push deploy loadtest-payload loadtest-coldstart loadtest-batch # For lab3
 
 help:
 	@grep -E "^[a-zA-Z_-]+:.*?## .*$$" $(MAKEFILE_LIST) | awk -F":.*?## " "{printf \"  %-20s %s\\n\", \$$1, \$$2}"
@@ -68,7 +69,7 @@ verify: ## Check the produced metric against the README claim
 teardown: ## Delete every resource tagged course=itcs355 for this lab
 	# cfg.tags indicate the lab. e.g., cfg.tags(1) -> lab1
 	python -c "from src import config; from cloudlayer.factory import get_adapter; \
-	cfg=config.load(); print(get_adapter(cfg).teardown(cfg.tags(2)))"
+	cfg=config.load(); print(get_adapter(cfg).teardown(cfg.tags($(LAB))))"
 
 clean: ## Remove local artifacts
 	rm -rf mlruns mlartifacts mlflow.db reports/metrics.json .pytest_cache
@@ -94,42 +95,19 @@ train-remote: data image-push ## Task 1: Train docker on cloud
 	print(f'Submitted training job: {job_id}'); \
 	res = adapter.wait_training(job_id); \
 	print('Job result:', res)"
-# 		python -c "\
-# from src import config; \
-# from cloudlayer.factory import get_adapter; \
-# cfg = config.load(); \
-# adapter = get_adapter(cfg); \
-# digest = adapter.push_image('$(IMAGE):$(TAG)'); \
-# args = ['--seed', '$(SEED)', '--metrics-out', '$(cfg.blob_uri)/reports/metrics.json']; \
-# job_id = adapter.submit_training(digest, args=args); \
-# print(f'Submitted job: {job_id}'); \
-# adapter.wait_training(job_id)"
+
 
 register: ## Task 4: Register candidate model to Vertex AI Registry (e.g. make register RUN_ID=a62c6df0)
 	@if [ -z "$(RUN_ID)" ]; then echo "Error: RUN_ID is required. Usage: make register RUN_ID=<id>"; exit 1; fi
-	python -c "import mlflow; from mlflow.tracking import MlflowClient; from src import config; \
-	cfg = config.load(strict=False); mlflow.set_tracking_uri(cfg.mlflow_tracking_uri); \
-	client = MlflowClient(); target_id = '$(RUN_ID)'; \
-	matching_runs = [r for r in client.search_runs(experiment_ids=[client.get_experiment_by_name('itcs355-lab2').experiment_id]) if r.info.run_id.startswith(target_id)]; \
-	run = matching_runs[0] if matching_runs else None; \
-	tags = run.data.tags if run else {}; \
-	params = run.data.params if run else {'seed': '20260101'}; \
-	metrics = run.data.metrics if run else {'val_roc_auc': 0.8421, 'test_roc_auc': 0.8482}; \
-	full_run_id = run.info.run_id if run else target_id; \
-	lineage = { \
-		'git_commit': str(tags.get('git_commit', 'unknown')), \
-		'data_version': str(tags.get('data_fingerprint', '422cccb9136e8140')), \
-		'mlflow_run_id': full_run_id, \
-		'training_job_id': str(tags.get('job_id', 'local-run')), \
-		'image_digest': str(tags.get('image_digest', 'sha256:mlops-lab2-latest')), \
-		'seed': str(params.get('seed', '20260101')), \
-		'metric_val': f\"{metrics.get('val_roc_auc', 0.8421):.4f}\", \
-		'metric_test': f\"{metrics.get('test_roc_auc', 0.8482):.4f}\" \
-	}; \
-	from cloudlayer.factory import get_adapter; adapter = get_adapter(cfg); \
-	model_uri = f'{cfg.blob_uri}/hpo_results/trial_{target_id}/model'; \
-	version = adapter.register_model(model_uri=model_uri, name=cfg.model_registry_name, lineage=lineage); \
-	print(f'Successfully registered model version {version} with full lineage tags.')"
+	python -c "\
+	from src import config; \
+	from cloudlayer.factory import get_adapter; \
+	cfg = config.load(strict=False); \
+	adapter = get_adapter(cfg); \
+	model_uri = f'runs:/$(RUN_ID)/model'; \
+	version = adapter.register_model(model_uri=model_uri, name=cfg.model_registry_name); \
+	print(f'Successfully registered model version {version} with lineage tags.')"
+
 # --- Lab 3 -------------------------------------------------------------------
 serve: ## Run the inference service locally on :8080
 	python scripts/export_model.py --out reports/model.joblib
@@ -138,11 +116,82 @@ serve: ## Run the inference service locally on :8080
 serve-image: ## Build the serving image
 	docker buildx build --platform $(PLATFORM) -f service/Dockerfile.serve -t itcs355-serve:$(TAG) --load .
 
-loadtest: ## Load test at three concurrency levels
-	@for vus in 1 10 50; do \
-	  echo "=== $$vus VUs ==="; \
-	  k6 run -e TARGET=$(TARGET) -e VUS=$$vus loadtest/k6.js || true; \
+
+serve-image-push: serve-image ## Push app service image to CONTAINER_REGISTRY via your adapter
+	python -c "from src import config; from cloudlayer.factory import get_adapter; \
+	print(get_adapter(config.load()).push_image(\"itcs355-serve:$(TAG)\"))"
+
+
+GCP_REGION ?= asia-south1
+PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
+ENDPOINT_NAME ?= itcs355-endpoint
+ENDPOINT_ID ?= $(shell gcloud ai endpoints list --region=$(GCP_REGION) --filter="displayName:$(ENDPOINT_NAME)" --format="value(name)" 2>/dev/null | awk -F'/' '{print $$NF}' | head -n 1)
+
+
+loadtest: ## Load test at three concurrency levels (1, 10, 50 VUs)
+	@TOKEN=$$(gcloud auth print-access-token) ; \
+	TARGET="https://$(GCP_REGION)-aiplatform.googleapis.com/v1/projects/$(PROJECT_ID)/locations/$(GCP_REGION)/endpoints/$(ENDPOINT_ID):rawPredict" ; \
+	for vus in 1 10 50; do \
+		echo "=== $$vus VUs ===" ; \
+		k6 run -e TARGET="$$TARGET" -e TOKEN="$$TOKEN" -e VUS=$$vus loadtest/k6.js || true ; \
 	done
+
+loadtest-batch: ## Task 3 Variable 1: Compare 100x single vs 1x batch call
+	@TOKEN=$$(gcloud auth print-access-token) ; \
+	BASE="https://$(GCP_REGION)-aiplatform.googleapis.com/v1/projects/$(PROJECT_ID)/locations/$(GCP_REGION)/endpoints/$(ENDPOINT_ID)" ; \
+	echo "=== Running Single Mode (100x /predict per iter) ===" ; \
+	k6 run -e BASE="$$BASE" -e TOKEN="$$TOKEN" -e MODE=single -e VUS=1 loadtest/k6-batch.js || true ; \
+	echo "=== Running Batch Mode (1x /predict/batch per iter) ===" ; \
+	k6 run -e BASE="$$BASE" -e TOKEN="$$TOKEN" -e MODE=batch -e VUS=1 loadtest/k6-batch.js || true
+
+loadtest-payload: ## Task 3 Variable 2: Sweep payload size padding (0, 1KB, 10KB, 100KB, 1MB)
+	@TOKEN=$$(gcloud auth print-access-token) ; \
+	TARGET="https://$(GCP_REGION)-aiplatform.googleapis.com/v1/projects/$(PROJECT_ID)/locations/$(GCP_REGION)/endpoints/$(ENDPOINT_ID):rawPredict" ; \
+	for pad in 0 1000 10000 100000 1000000; do \
+		echo "=== Testing PAD_BYTES=$$pad ===" ; \
+		k6 run -e TARGET="$$TARGET" -e TOKEN="$$TOKEN" -e PAD_BYTES=$$pad -e VUS=10 loadtest/k6-payload.js || true ; \
+	done
+
+loadtest-coldstart: ## Task 3: Measure cold-start latency vs warm steady-state latency
+	@TOKEN=$$(gcloud auth print-access-token) ; \
+	TARGET="https://$(GCP_REGION)-aiplatform.googleapis.com/v1/projects/$(PROJECT_ID)/locations/$(GCP_REGION)/endpoints/$(ENDPOINT_ID):rawPredict" ; \
+	PAYLOAD='{"temp_c": 78.4, "vibration_mm_s": 3.1, "pressure_kpa": 315.2, "hours_since_service": 4200, "load_pct": 68.0, "ambient_humidity": 55.0}' ; \
+	echo "=== 1. First Request (Cold Start Overhead) ===" ; \
+	curl -o /dev/null -s -w "Cold Start Latency: %{time_total}s\n" -X POST "$$TARGET" \
+		-H "Authorization: Bearer $$TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "$$PAYLOAD" ; \
+	echo "=== 2. Second Request (Warm / Steady State) ===" ; \
+	curl -o /dev/null -s -w "Warm Request Latency: %{time_total}s\n" -X POST "$$TARGET" \
+		-H "Authorization: Bearer $$TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "$$PAYLOAD"
+
+
+deploy: ## Deploy model image to Vertex AI Endpoint (e.g. make deploy MACHINE_TYPE=n1-standard-4 MODEL_REGISTRY_NAME=dev ENDPOINT_NAME=itcs355-endpoint-large)
+	@MODEL_REF="$(or $(MODEL_REGISTRY_NAME),dev)"; \
+	ENDPOINT="$(or $(ENDPOINT_NAME),itcs355-endpoint)"; \
+	MACHINE_TYPE="$(or $(MACHINE_TYPE),n1-standard-2)"; \
+	python -c "\
+	from src import config; \
+	from cloudlayer.factory import get_adapter; \
+	cfg = config.load(); \
+	adapter = get_adapter(cfg); \
+	ep = adapter.deploy('$${MODEL_REF}', '$${ENDPOINT}', '$${MACHINE_TYPE}'); \
+	print('Deployed to Endpoint:', ep)"
+	
+
+
+smoke: ## Smoke test deployed endpoint with a sample payload
+	@ENDPOINT="$(or $(ENDPOINT_NAME),itcs355-endpoint)"; \
+	python -c "\
+	from src import config; \
+	from cloudlayer.factory import get_adapter; \
+	cfg = config.load(strict=False); \
+	adapter = get_adapter(cfg); \
+	payload = {'temp_c': 82.478, 'vibration_mm_s': 4.888, 'pressure_kpa': 308.557, 'hours_since_service': 1508.063, 'load_pct': 95.792, 'ambient_humidity': 63.407}; \
+	preds = adapter.invoke('$${ENDPOINT}', payload); \
+	print('Smoke Test Response:', preds)"
 
 # --- Lab 4 -------------------------------------------------------------------
 inject-drift: ## Shift a feature's distribution on purpose
