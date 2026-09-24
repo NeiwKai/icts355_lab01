@@ -281,22 +281,22 @@ class GcpAdapter(CloudAdapter):
                 )
 
     # For download model.joblib in app.py docker image
+
     def download_artifact(self, raw_path: str, local_target_path: str) -> Path:
         """Download an artifact from cloud storage or fallback to local path."""
-        target_path = Path(local_target_path)
-        
-        # If raw_path is a local file that already exists, return it
+        # 1. If it's a local file that already exists, return it immediately
         local_src = Path(raw_path)
         if local_src.exists():
             return local_src
 
-        # Download from GCS
+        # 2. Only attempt GCS fetch if raw_path starts with gs://
         if raw_path.startswith("gs://"):
             from google.cloud import storage
 
             clean_uri = raw_path.replace("gs://", "")
             bucket_name, blob_path = clean_uri.split("/", 1)
 
+            target_path = Path(local_target_path)
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
             client = storage.Client()
