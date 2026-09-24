@@ -35,7 +35,6 @@ STATE: dict[str, Any] = {"model": None, "version": os.environ.get("MODEL_VERSION
 
 def _load_model():
     """Load once at startup via Cloud Layer abstraction."""
-    from pathlib import Path
     import joblib
     import os
     from src import config
