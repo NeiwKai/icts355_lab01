@@ -13,12 +13,18 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from service.schemas import BatchRequest, BatchResponse, PredictRequest, PredictResponse
+from service.schemas import (
+    BatchRequest,
+    BatchResponse,
+    PredictRequest,
+    PredictResponse,
+    VertexPredictRequest,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -136,19 +142,6 @@ def _score(rows: list[dict]) -> list[float]:
     frame = pd.DataFrame(rows)[FEATURES]
     return [float(p) for p in STATE["model"].predict_proba(frame)[:, 1]]
 
-
-# @app.post("/predict", response_model=PredictResponse)
-# def predict(payload: PredictRequest) -> PredictResponse:
-#     score = _score([payload.model_dump()])[0]
-#     return PredictResponse(probability=score, model_version=str(STATE["version"]))
-from typing import Any, Union
-from service.schemas import (
-    BatchRequest,
-    BatchResponse,
-    PredictRequest,
-    PredictResponse,
-    VertexPredictRequest,
-)
 
 @app.post("/predict")
 def predict(payload: Union[BatchRequest, VertexPredictRequest, PredictRequest]) -> dict[str, Any]:
