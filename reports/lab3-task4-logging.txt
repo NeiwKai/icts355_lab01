@@ -1,0 +1,289 @@
+============== Step 0: Capture Availabel Model Log Evidence ==============
+
+(ml_ops) ╭─mr.sup at Suppanats-MacBook-Pro in ~/ict1_2026/ml_ops/public_teaching_mlaiops on main✘✘✘
+╰─± EP_ID=$(gcloud ai endpoints list --region=asia-south1 --filter="displayName='itcs355-endpoint'" --format="value(name)" | awk -F'/' '{print $NF}' | head -n 1) && \
+gcloud ai endpoints describe "${EP_ID}" --region=asia-south1 --format="yaml(deployedModels)"
+Using endpoint [https://asia-south1-aiplatform.googleapis.com/]
+WARNING: --filter : operator evaluation is changing for consistency across Google APIs.  displayName=itcs355-endpoint currently does not match but will match in the near future.  Run `gcloud topic filters` for details.
+Using endpoint [https://asia-south1-aiplatform.googleapis.com/]
+deployedModels:
+- createTime: '2026-09-24T06:17:08.600500Z'
+  dedicatedResources:
+    machineSpec:
+      machineType: n1-standard-2
+    maxReplicaCount: 1
+    minReplicaCount: 1
+  displayName: itcs355-endpoint-deployed
+  id: '247779343365832704'
+  model: projects/203185016197/locations/asia-south1/models/8158846869074608128
+  modelVersionId: '1'
+  status:
+    availableReplicaCount: 1
+    lastUpdateTime: '2026-09-24T09:07:37.678286Z'
+- createTime: '2026-09-24T08:59:23.633246Z'
+  dedicatedResources:
+    machineSpec:
+      machineType: n1-standard-2
+    maxReplicaCount: 1
+    minReplicaCount: 1
+  displayName: v2-canary
+  id: '2891955274585735168'
+  model: projects/203185016197/locations/asia-south1/models/1518289218516811776
+  modelVersionId: '1'
+  status:
+    availableReplicaCount: 1
+    lastUpdateTime: '2026-09-24T09:07:12.075756Z'
+
+============== Step 1: Capture Timestamped 90/10 Split Evidence ==============
+
+(ml_ops) ╭─mr.sup at Suppanats-MacBook-Pro in ~/ict1_2026/ml_ops/public_teaching_mlaiops on main✘✘✘
+╰─± EP_ID="4774855743012601856"
+gcloud ai endpoints describe "${EP_ID}" \
+  --region=asia-south1 \
+  --format="json(deployedModels.id, deployedModels.displayName, trafficSplit)" | tee reports/canary-traffic-90-10.json
+Using endpoint [https://asia-south1-aiplatform.googleapis.com/]
+{
+  "trafficSplit": {
+    "247779343365832704": 90,
+    "2891955274585735168": 10
+  }
+}
+
+============== Step 2: Run Traffic & Detect Degradation ==============
+
+(ml_ops) ╭─mr.sup at Suppanats-MacBook-Pro in ~/ict1_2026/ml_ops/public_teaching_mlaiops on main✘✘✘
+╰─± make loadtest
+=== 1 VUs ===
+
+         /\      Grafana   /‾‾/
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ‾‾\
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/
+
+
+     execution: local
+        script: loadtest/k6.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 1 max VUs, 1m30s max duration (incl. graceful stop):
+              * default: 1 looping VUs for 1m0s (gracefulStop: 30s)
+
+
+
+  █ THRESHOLDS
+
+    predict_failures
+    ✗ 'rate<0.01' rate=10.82%
+
+    predict_latency_ms
+    ✗ 'p(95)<200' p(95)=410.2804
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 804    13.372747/s
+    checks_succeeded...: 92.78% 746 out of 804
+    checks_failed......: 7.21%  58 out of 804
+
+    ✗ status is 200
+      ↳  89% — ✓ 239 / ✗ 29
+    ✗ probability present
+      ↳  89% — ✓ 239 / ✗ 29
+    ✓ version reported
+
+    CUSTOM
+    predict_failures...............: 10.82% 29 out of 268
+    predict_latency_ms.............: avg=223.48069 min=106.928  med=194.607  max=2149.271 p(90)=297.3854 p(95)=410.2804
+
+    HTTP
+    http_req_duration..............: avg=223.48ms  min=106.92ms med=194.6ms  max=2.14s    p(90)=297.38ms p(95)=410.28ms
+      { expected_response:true }...: avg=233.52ms  min=176.94ms med=196.43ms max=2.14s    p(90)=309.86ms p(95)=411.72ms
+    http_req_failed................: 10.82% 29 out of 268
+    http_reqs......................: 268    4.457582/s
+
+    EXECUTION
+    iteration_duration.............: avg=224.31ms  min=107.2ms  med=194.89ms max=2.27s    p(90)=297.63ms p(95)=410.77ms
+    iterations.....................: 268    4.457582/s
+    vus............................: 1      min=1         max=1
+    vus_max........................: 1      min=1         max=1
+
+    NETWORK
+    data_received..................: 79 kB  1.3 kB/s
+    data_sent......................: 64 kB  1.1 kB/s
+
+
+
+
+running (1m00.1s), 0/1 VUs, 268 complete and 0 interrupted iterations
+default ✓ [======================================] 1 VUs  1m0s
+ERRO[0060] thresholds on metrics 'predict_failures, predict_latency_ms' have been crossed
+=== 10 VUs ===
+
+         /\      Grafana   /‾‾/
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ‾‾\
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/
+
+
+     execution: local
+        script: loadtest/k6.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 1m30s max duration (incl. graceful stop):
+              * default: 10 looping VUs for 1m0s (gracefulStop: 30s)
+
+
+
+  █ THRESHOLDS
+
+    predict_failures
+    ✗ 'rate<0.01' rate=10.04%
+
+    predict_latency_ms
+    ✗ 'p(95)<200' p(95)=1173.7646
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 2151   35.543344/s
+    checks_succeeded...: 93.30% 2007 out of 2151
+    checks_failed......: 6.69%  144 out of 2151
+
+    ✗ status is 200
+      ↳  89% — ✓ 645 / ✗ 72
+    ✗ probability present
+      ↳  89% — ✓ 645 / ✗ 72
+    ✓ version reported
+
+    CUSTOM
+    predict_failures...............: 10.04% 72 out of 717
+    predict_latency_ms.............: avg=838.919891 min=108.548  med=864.904  max=2088.622 p(90)=1107.1998 p(95)=1173.7646
+
+    HTTP
+    http_req_duration..............: avg=838.91ms   min=108.54ms med=864.9ms  max=2.08s    p(90)=1.1s      p(95)=1.17s
+      { expected_response:true }...: avg=915.45ms   min=589.1ms  med=880.69ms max=2.08s    p(90)=1.11s     p(95)=1.17s
+    http_req_failed................: 10.04% 72 out of 717
+    http_reqs......................: 717    11.847781/s
+
+    EXECUTION
+    iteration_duration.............: avg=841.61ms   min=108.73ms med=865.15ms max=2.26s    p(90)=1.1s      p(95)=1.17s
+    iterations.....................: 717    11.847781/s
+    vus............................: 10     min=10        max=10
+    vus_max........................: 10     min=10        max=10
+
+    NETWORK
+    data_received..................: 255 kB 4.2 kB/s
+    data_sent......................: 185 kB 3.1 kB/s
+
+
+
+
+running (1m00.5s), 00/10 VUs, 717 complete and 0 interrupted iterations
+default ✓ [======================================] 10 VUs  1m0s
+ERRO[0060] thresholds on metrics 'predict_failures, predict_latency_ms' have been crossed
+=== 50 VUs ===
+
+         /\      Grafana   /‾‾/
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ‾‾\
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/
+
+
+     execution: local
+        script: loadtest/k6.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 50 max VUs, 1m30s max duration (incl. graceful stop):
+              * default: 50 looping VUs for 1m0s (gracefulStop: 30s)
+
+WARN[0072] Request Failed                                error="Post \"https://asia-south1-aiplatform.googleapis.com/v1/projects/itcs355-6688132/locations/asia-south1/endpoints/4774855743012601856:rawPredict\": request timeout"
+WARN[0073] Request Failed                                error="Post \"https://asia-south1-aiplatform.googleapis.com/v1/projects/itcs355-6688132/locations/asia-south1/endpoints/4774855743012601856:rawPredict\": request timeout"
+WARN[0073] Request Failed                                error="Post \"https://asia-south1-aiplatform.googleapis.com/v1/projects/itcs355-6688132/locations/asia-south1/endpoints/4774855743012601856:rawPredict\": request timeout"
+WARN[0073] Request Failed                                error="Post \"https://asia-south1-aiplatform.googleapis.com/v1/projects/itcs355-6688132/locations/asia-south1/endpoints/4774855743012601856:rawPredict\": request timeout"
+WARN[0073] Request Failed                                error="Post \"https://asia-south1-aiplatform.googleapis.com/v1/projects/itcs355-6688132/locations/asia-south1/endpoints/4774855743012601856:rawPredict\": request timeout"
+WARN[0074] Request Failed                                error="Post \"https://asia-south1-aiplatform.googleapis.com/v1/projects/itcs355-6688132/locations/asia-south1/endpoints/4774855743012601856:rawPredict\": request timeout"
+
+
+  █ THRESHOLDS
+
+    predict_failures
+    ✗ 'rate<0.01' rate=12.37%
+
+    predict_latency_ms
+    ✗ 'p(95)<200' p(95)=9263.4246
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 1794   24.012986/s
+    checks_succeeded...: 91.41% 1640 out of 1794
+    checks_failed......: 8.58%  154 out of 1794
+
+    ✗ status is 200
+      ↳  87% — ✓ 524 / ✗ 74
+    ✗ probability present
+      ↳  87% — ✓ 524 / ✗ 74
+    ✗ version reported
+      ↳  98% — ✓ 592 / ✗ 6
+
+    CUSTOM
+    predict_failures...............: 12.37% 74 out of 598
+    predict_latency_ms.............: avg=5280.948997 min=105.794  med=4950.7075 max=60001.05 p(90)=6838.6012 p(95)=9263.4246
+
+    HTTP
+    http_req_duration..............: avg=5.28s       min=105.79ms med=4.95s     max=1m0s     p(90)=6.83s     p(95)=9.26s
+      { expected_response:true }...: avg=5.3s        min=902.45ms med=5.09s     max=12.68s   p(90)=6.85s     p(95)=9.22s
+    http_req_failed................: 12.37% 74 out of 598
+    http_reqs......................: 598    8.004329/s
+
+    EXECUTION
+    iteration_duration.............: avg=5.28s       min=106.13ms med=4.95s     max=1m0s     p(90)=6.93s     p(95)=9.26s
+    iterations.....................: 598    8.004329/s
+    vus............................: 1      min=1         max=50
+    vus_max........................: 50     min=50        max=50
+
+    NETWORK
+    data_received..................: 460 kB 6.2 kB/s
+    data_sent......................: 242 kB 3.2 kB/s
+
+
+
+
+running (1m14.7s), 00/50 VUs, 598 complete and 0 interrupted iterations
+default ✓ [======================================] 50 VUs  1m0s
+ERRO[0075] thresholds on metrics 'predict_failures, predict_latency_ms' have been crossed
+
+============== Step 3: Execute Emergency Rollback (100% Back to Primary) ==============
+
+(ml_ops) ╭─mr.sup at Suppanats-MacBook-Pro in ~/ict1_2026/ml_ops/public_teaching_mlaiops on main✘✘✘
+╰─± python -c "
+from google.cloud import aiplatform
+
+aiplatform.init(location='asia-south1')
+ep = aiplatform.Endpoint.list(filter='display_name=\"itcs355-endpoint\"')[0]
+
+# Primary model ID: 247779343365832704
+ep.update(traffic_split={'247779343365832704': 100})
+print('Rollback successful: 100% traffic shifted back to primary model.')
+"
+Updating Endpoint endpoint: projects/203185016197/locations/asia-south1/endpoints/4774855743012601856
+Endpoint endpoint updated. Resource name: projects/203185016197/locations/asia-south1/endpoints/4774855743012601856
+Rollback successful: 100% traffic shifted back to primary model.
+
+============== Step 4: Capture Rollback Evidence ==============
+
+(ml_ops) ╭─mr.sup at Suppanats-MacBook-Pro in ~/ict1_2026/ml_ops/public_teaching_mlaiops on main✘✘✘
+╰─± gcloud ai endpoints describe "${EP_ID}" \
+  --region=asia-south1 \
+  --format="json(deployedModels.id, deployedModels.displayName, trafficSplit)" | tee reports/canary-traffic-rollback.json
+Using endpoint [https://asia-south1-aiplatform.googleapis.com/]
+{
+  "trafficSplit": {
+    "247779343365832704": 100
+  }
+}
+
+
