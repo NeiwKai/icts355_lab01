@@ -35,22 +35,35 @@ STATE: dict[str, Any] = {"model": None, "version": os.environ.get("MODEL_VERSION
 
 def _load_model():
     """Load once at startup via Cloud Layer abstraction."""
+    from pathlib import Path
     import joblib
     import os
-    from src import config
-    from cloudlayer.factory import get_adapter
 
     raw_path = os.environ.get("MODEL_PATH", "/tmp/reports/model.joblib")
     log.info("Configured MODEL_PATH: '%s'", raw_path)
 
-    # Resolve and download model via cloudlayer adapter
-    cfg = config.load()
-    adapter = get_adapter(cfg)
+    local_path = Path(raw_path)
     
-    local_path = adapter.download_artifact(raw_path, "/tmp/reports/model.joblib")
+    # 1. Direct local file loading (for tests/local dev without cloud.env)
+    if local_path.exists():
+        log.info("Loading local model file from '%s'...", local_path)
+        return joblib.load(local_path)
+
+    # 2. Delegate remote GCS downloads to cloudlayer adapter
+    try:
+        from src import config
+        from cloudlayer.factory import get_adapter
+
+        cfg = config.load()
+        adapter = get_adapter(cfg)
+        local_path = adapter.download_artifact(raw_path, "/tmp/reports/model.joblib")
+    except Exception as err:
+        log.error("Failed to load model via cloudlayer adapter: %s", err)
+        raise RuntimeError(f"Model initialization failed: {err}") from err
 
     log.info("Unpickling model from '%s'...", local_path)
     return joblib.load(local_path)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
