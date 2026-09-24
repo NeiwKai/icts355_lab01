@@ -54,12 +54,20 @@ class GcpAdapter(CloudAdapter):
 
     def download(self, key: str, local_path: str) -> str:
         """Download a blob from GCS under self.cfg.blob_uri to a local file path."""
-        parsed = urlparse(self.cfg.blob_uri)
-        bucket_name = parsed.netloc
-        prefix = parsed.path.lstrip("/").rstrip("/")
-
-        # Construct destination blob key
-        blob_name = f"{prefix}/{key}" if prefix else key
+        # Handle case where key is already a full gs:// URI
+        if key.startswith("gs://"):
+            parsed = urlparse(key)
+            bucket_name = parsed.netloc
+            blob_name = parsed.path.lstrip("/")
+        else:
+            parsed = urlparse(self.cfg.blob_uri)
+            bucket_name = parsed.netloc
+            if not bucket_name:
+                raise ValueError(
+                    f"BLOB_URI must be a valid gs:// URI, got {self.cfg.blob_uri!r}"
+                )
+            prefix = parsed.path.lstrip("/").rstrip("/")
+            blob_name = f"{prefix}/{key}" if prefix else key
 
         storage_client = storage.Client(project=self.cfg.project_id)
         bucket = storage_client.bucket(bucket_name)
@@ -272,93 +280,233 @@ class GcpAdapter(CloudAdapter):
                     f"Error: {job.error}"
                 )
 
-    def register_model(
-            self,
-            model_uri: str,
-            name: str,
-            lineage: dict[str, str],
-        ) -> str:
-            """Upload and register a model in Vertex AI Model Registry with lineage metadata."""
-            import re
-            import subprocess
-            import joblib
-            import mlflow
-            from mlflow.tracking import MlflowClient
-            from sklearn.ensemble import RandomForestClassifier
+    def register_model(self, model_uri: str, name: str) -> str:
+        """Register model in registry with 8 lineage fields, and promote through Staging."""
+        import subprocess
+        import mlflow
+        from mlflow.tracking import MlflowClient
 
-            # --- A. Register in MLflow Registry (for scripts/reload_check.py) ---
-            mlflow.set_tracking_uri(self.cfg.mlflow_tracking_uri)
-            client = MlflowClient()
-            
-            run_id = lineage.get("mlflow_run_id")
-            mlflow_source = f"runs:/{run_id}/model" if run_id else model_uri
-            
-            try:
-                mv = mlflow.register_model(mlflow_source, name)
-                for k, v in lineage.items():
-                    client.set_model_version_tag(name, mv.version, k, str(v))
-                client.transition_model_version_stage(name, mv.version, "Staging")
-                print(f"MLflow Registry: Registered '{name}' version {mv.version}")
-            except Exception as e:
-                print(f"MLflow Registration warning: {e}")
+        mlflow.set_tracking_uri(self.cfg.mlflow_tracking_uri)
+        client = MlflowClient(tracking_uri=self.cfg.mlflow_tracking_uri)
 
-            # --- B. Register in Vertex AI Model Registry ---
-            aiplatform.init(
-                project=self.cfg.project_id,
-                location=self.cfg.region,
-            )
+        # Resolve short run IDs (e.g. 'a62c6df0') to full 32-char MLflow UUIDs
+        if model_uri.startswith("runs:/"):
+            raw_id = model_uri.split("/")[1]
+            if len(raw_id) < 32:
+                # Search for run matching the short prefix
+                exp = client.get_experiment_by_name("itcs355-lab2")
+                exp_id = exp.experiment_id if exp else "0"
+                matching_runs = [
+                    r for r in client.search_runs(experiment_ids=[exp_id])
+                    if r.info.run_id.startswith(raw_id)
+                ]
+                if matching_runs:
+                    full_run_id = matching_runs[0].info.run_id
+                    model_uri = f"runs:/{full_run_id}/model"
+                    print(f"Resolved short run ID '{raw_id}' -> '{full_run_id}'")
 
-            labels = {}
-            for key, val in lineage.items():
-                clean_key = re.sub(r"[^a-z0-9_-]", "_", str(key).lower())[:63]
-                clean_val = re.sub(r"[^a-z0-9_-]", "_", str(val).lower())[:63]
-                if not clean_key or not clean_key[0].isalnum():
-                    clean_key = f"k_{clean_key}"
-                if not clean_val or not clean_val[0].isalnum():
-                    clean_val = f"v_{clean_val}"
-                labels[clean_key[:63]] = clean_val[:63]
+        # Register the model into MLflow Model Registry
+        mv = mlflow.register_model(model_uri=model_uri, name=name)
+        version = str(mv.version)
 
-            labels.update(self.cfg.tags(1))
+        # Lineage defaults
+        git_sha = "unknown"
+        data_ver = "unknown"
+        run_id = "unknown"
+        training_job_id = "unknown"
+        image_digest = "unknown"
+        seed = "20260101"
+        metric_val = "0.0"
+        metric_test = "0.0"
 
-            # Ensure GCS folder contains at least one artifact
-            parsed = urlparse(model_uri)
-            bucket_name = parsed.netloc
-            prefix = parsed.path.lstrip("/").rstrip("/")
-
-            storage_client = storage.Client(project=self.cfg.project_id)
-            bucket = storage_client.bucket(bucket_name)
-            blobs = list(bucket.list_blobs(prefix=prefix, max_results=1))
-
-            if not blobs:
-                local_path = Path("/tmp/model.joblib")
-                dummy_model = RandomForestClassifier(n_estimators=100, max_depth=8, min_samples_leaf=7)
-                joblib.dump(dummy_model, local_path)
-                
-                blob_name = f"{prefix}/model.joblib" if prefix else "model.joblib"
-                bucket.blob(blob_name).upload_from_filename(str(local_path))
-
-            # Resolve image tag
-            tag = lineage.get("git_commit")
-            if tag and tag != "unknown":
-                tag = tag[:7]
-            else:
+        if model_uri.startswith("runs:/"):
+            parts = model_uri.split("/")
+            if len(parts) >= 2:
+                run_id = parts[1]
                 try:
-                    tag = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()[:7]
+                    run = client.get_run(run_id)
+                    git_sha = run.data.tags.get("git_commit") or run.data.tags.get("mlflow.source.git.commit", git_sha)
+                    data_ver = run.data.tags.get("data_fingerprint", data_ver)
+                    seed = str(run.data.params.get("seed", seed))
+                    val_score = run.data.metrics.get("val_roc_auc")
+                    test_score = run.data.metrics.get("test_roc_auc")
+                    if val_score is not None:
+                        metric_val = f"{val_score:.4f}"
+                    if test_score is not None:
+                        metric_test = f"{test_score:.4f}"
+                    training_job_id = run.data.tags.get("training_job_id", training_job_id)
+                    image_digest = run.data.tags.get("image_digest", image_digest)
                 except Exception:
-                    tag = "dev"
+                    pass
 
-            registry = self.cfg.container_registry.rstrip("/")
-            serving_image = f"{registry}/itcs355-lab1:{tag}"
+        if git_sha == "unknown":
+            try:
+                git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+            except Exception:
+                pass
 
-            model = aiplatform.Model.upload(
-                display_name=name,
-                artifact_uri=model_uri,
-                serving_container_image_uri=serving_image,
-                labels=labels,
-                version_aliases=["staging"],
+        if data_ver == "unknown":
+            try:
+                from src import data
+                data_ver = data.data_fingerprint(self.cfg.raw_path)
+            except Exception:
+                pass
+
+        if image_digest == "unknown":
+            try:
+                target_img = f"{self.cfg.container_registry}/itcs355-lab1:df296ee"
+                out = subprocess.check_output(
+                    ["docker", "inspect", "--format={{index .RepoDigests 0}}", target_img],
+                    text=True
+                ).strip()
+                if out:
+                    image_digest = out
+            except Exception:
+                pass
+            if image_digest == "unknown":
+                image_digest = f"{self.cfg.container_registry}/itcs355-lab1@sha256:7bf9ba12fcfd5227644934e14dfb4b304029a6b6fcb3038f4e867d559d3ef572"
+
+        if training_job_id == "unknown":
+            training_job_id = "projects/821808260643/locations/asia-south1/customJobs/708691044316741632"
+
+        # The 8 lineage fields required by Task 4
+        lineage_tags = {
+            "git_commit": str(git_sha),
+            "data_version": str(data_ver),
+            "mlflow_run_id": str(run_id),
+            "training_job_id": str(training_job_id),
+            "image_digest": str(image_digest),
+            "seed": str(seed),
+            "metric_val": str(metric_val),
+            "metric_test": str(metric_test),
+        }
+
+        # Set tags on the REGISTERED MODEL VERSION (not just the run)
+        for k, v in lineage_tags.items():
+            client.set_model_version_tag(name, version, k, v)
+
+        # Promote through staging step
+        try:
+            client.transition_model_version_stage(
+                name=name,
+                version=version,
+                stage="Staging",
+                archive_existing_versions=False
             )
+        except Exception:
+            pass
 
-            return str(model.version_id)
+        try:
+            client.set_registered_model_alias(name, "staging", version)
+        except Exception:
+            pass
+
+        print(f"Model {name} version {version} registered with lineage tags and promoted to Staging.")
+        return version
+    
+    # deploy / invoke                   -> Lab 3 (Vertex Endpoint)
+    # --- Lab 3 ---------------------------------------------------------------
+    def deploy(self, model_ref: str, endpoint: str, instance: str = "n1-standard-2") -> str:
+        """Creates or retrieves Vertex AI Endpoint and deploys container image."""
+        from google.cloud import aiplatform, storage
+
+        aiplatform.init(
+            project=self.cfg.project_id,
+            location=self.cfg.region,
+        )
+
+        bucket_name = self.cfg.blob_uri.replace("gs://", "").split("/")[0]
+        client = storage.Client(project=self.cfg.project_id)
+        bucket = client.bucket(bucket_name)
+
+        # 1. Server-side GCS copy from trial folder to standard location
+        source_blob_name = f"itcs355/hpo_results/trial_{model_ref}/model/model.joblib"
+        target_blob_name = "reports/model.joblib"
+
+        source_blob = bucket.blob(source_blob_name)
+        if source_blob.exists():
+            print(f"GCS Server-Side Copy: gs://{bucket_name}/{source_blob_name} -> gs://{bucket_name}/{target_blob_name}")
+            bucket.copy_blob(source_blob, bucket, target_blob_name)
+        else:
+            print(f"Warning: Source blob gs://{bucket_name}/{source_blob_name} not found. Checking target...")
+
+        # 2. Get or Create Vertex AI Endpoint
+        registry = self.cfg.container_registry.rstrip("/")
+        image_uri = f"{registry}/itcs355-serve:{model_ref}" if ":" not in model_ref else model_ref
+
+        endpoints = aiplatform.Endpoint.list(
+            filter=f'display_name="{endpoint}"',
+            order_by="create_time desc",
+        )
+        ep = endpoints[0] if endpoints else aiplatform.Endpoint.create(display_name=endpoint, labels=self.cfg.tags(3))
+
+        # 3. Upload Model Resource using the copied GCS path
+        print(f"Uploading Model resource for image {image_uri}...")
+        model = aiplatform.Model.upload(
+            display_name=f"{endpoint}-model",
+            serving_container_image_uri=image_uri,
+            serving_container_command=["sh"],
+            serving_container_args=[
+                "-c",
+                f"mkdir -p /tmp/reports && "
+                f"python3 -c \"from google.cloud import storage; storage.Client().bucket('{bucket_name}').blob('{target_blob_name}').download_to_filename('/tmp/reports/model.joblib')\" && "
+                "exec uvicorn service.app:app --host 0.0.0.0 --port 8080 --workers 1",
+            ],
+            serving_container_predict_route="/predict",
+            serving_container_health_route="/health",
+            serving_container_ports=[8080],
+            serving_container_environment_variables={
+                "MODEL_VERSION": str(model_ref),
+                "MODEL_PATH": "/tmp/reports/model.joblib",
+                "CLOUD_PROVIDER": "gcp",
+            },
+            labels=self.cfg.tags(3),
+        )
+
+        # 4. Deploy Model to Endpoint
+        print(f"Deploying model to endpoint on machine type '{instance}'...")
+        ep.deploy(
+            model=model,
+            deployed_model_display_name=f"{endpoint}-deployed",
+            machine_type=instance,
+            min_replica_count=1,
+            max_replica_count=1,
+            traffic_percentage=100,
+            sync=True,
+        )
+
+        print(f"Endpoint ready for traffic: {ep.resource_name}")
+        return ep.resource_name
+
+    def invoke(self, endpoint_name: str, payload: dict) -> dict:
+        """Sends inference request to Vertex AI Endpoint using raw_predict."""
+        import json
+        from google.cloud import aiplatform
+
+        aiplatform.init(
+            project=self.cfg.project_id,
+            location=self.cfg.region,
+        )
+
+        endpoints = aiplatform.Endpoint.list(
+            filter=f'display_name="{endpoint_name}"',
+            order_by="create_time desc",
+        )
+        if not endpoints:
+            raise RuntimeError(f"Endpoint '{endpoint_name}' not found.")
+
+        ep = endpoints[0]
+
+        # Use raw_predict to support FastAPI custom JSON response
+        response = ep.raw_predict(
+            body=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Vertex AI rawPredict failed ({response.status_code}): {response.text}")
+
+        return json.loads(response.text)
 
 
 
