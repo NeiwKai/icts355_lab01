@@ -147,3 +147,11 @@ def predict(payload: Union[BatchRequest, VertexPredictRequest, PredictRequest]) 
 def predict_batch(payload: BatchRequest) -> BatchResponse:
     scores = _score([row.model_dump() for row in payload.rows])
     return BatchResponse(probabilities=scores, model_version=str(STATE["version"]))
+
+
+
+# For task4 
+@app.get("/v1/endpoints/{endpoint_id}/deployedModels/{deployed_model_id}")
+async def vertex_internal_health(endpoint_id: str, deployed_model_id: str):
+    """Satisfy internal Vertex AI endpoint health checks."""
+    return {"status": "HEALTHY", "model_version": STATE.get("version", "unknown")}
