@@ -30,32 +30,52 @@ STATE: dict[str, Any] = {"model": None, "version": os.environ.get("MODEL_VERSION
 
 
 def _load_model():
-    """Load once, at startup. Never per request.
-
-    Loading per request is the commonest cause of a p99 that looks nothing like p50, and
-    it is the first thing to check when your latency distribution has a long tail.
-    """
-    name = os.environ.get("MODEL_REGISTRY_NAME")
-    version = os.environ.get("MODEL_VERSION")
-    if name and version:
-        import mlflow.sklearn  # imported lazily so tests can run without a registry
-
-        mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
-        return mlflow.sklearn.load_model(f"models:/{name}/{version}")
-
-    # Fallback for local development and tests only. Submitting this is not acceptable:
-    # your deployed service must load a registered version.
+    """Load once, at startup. Supports local POSIX paths and remote gs:// URIs."""
     from pathlib import Path
-
     import joblib
+    import os
 
-    path = Path(os.environ.get("MODEL_PATH", "reports/model.joblib"))
-    if not path.exists():
-        raise RuntimeError(
-            "No model available. Set MODEL_REGISTRY_NAME and MODEL_VERSION, or MODEL_PATH."
-        )
-    return joblib.load(path)
+    raw_path = os.environ.get("MODEL_PATH", "/tmp/reports/model.joblib")
+    log.info("Configured MODEL_PATH: '%s'", raw_path)
 
+    # 1. If it's already a local file that exists, load it directly
+    local_path = Path(raw_path)
+    if local_path.exists():
+        log.info("Loading existing model file from '%s'...", local_path)
+        return joblib.load(local_path)
+
+    # 2. If it's a GCS URI, download using google-cloud-storage SDK
+    if raw_path.startswith("gs://"):
+        try:
+            from google.cloud import storage
+        except ImportError as err:
+            raise RuntimeError(
+                "google-cloud-storage package is missing from container environment. "
+                "Add 'google-cloud-storage' to requirements.txt."
+            ) from err
+
+        clean_uri = raw_path.replace("gs://", "")
+        bucket_name, blob_path = clean_uri.split("/", 1)
+
+        local_target = Path("/tmp/reports/model.joblib")
+        local_target.parent.mkdir(parents=True, exist_ok=True)
+
+        log.info("Downloading GCS artifact 'gs://%s/%s' -> '%s'...", bucket_name, blob_path, local_target)
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+
+        if not blob.exists():
+            raise RuntimeError(f"GCS artifact not found at 'gs://{bucket_name}/{blob_path}'")
+
+        blob.download_to_filename(str(local_target))
+        local_path = local_target
+
+    if not local_path.exists():
+        raise RuntimeError(f"No model file found at resolved path '{local_path}'")
+
+    log.info("Unpickling model from '%s'...", local_path)
+    return joblib.load(local_path)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -117,10 +137,35 @@ def _score(rows: list[dict]) -> list[float]:
     return [float(p) for p in STATE["model"].predict_proba(frame)[:, 1]]
 
 
-@app.post("/predict", response_model=PredictResponse)
-def predict(payload: PredictRequest) -> PredictResponse:
+# @app.post("/predict", response_model=PredictResponse)
+# def predict(payload: PredictRequest) -> PredictResponse:
+#     score = _score([payload.model_dump()])[0]
+#     return PredictResponse(probability=score, model_version=str(STATE["version"]))
+from typing import Any, Union
+from service.schemas import (
+    BatchRequest,
+    BatchResponse,
+    PredictRequest,
+    PredictResponse,
+    VertexPredictRequest,
+)
+
+@app.post("/predict")
+def predict(payload: Union[BatchRequest, VertexPredictRequest, PredictRequest]) -> dict[str, Any]:
+    # 1. Handle BatchRequest: {"rows": [...]}
+    if isinstance(payload, BatchRequest):
+        scores = _score([row.model_dump() for row in payload.rows])
+        return {"probabilities": scores, "model_version": str(STATE["version"])}
+
+    # 2. Handle VertexPredictRequest: {"instances": [...]}
+    if isinstance(payload, VertexPredictRequest):
+        scores = _score([instance.model_dump() for instance in payload.instances])
+        return {"predictions": scores, "model_version": str(STATE["version"])}
+
+    # 3. Handle single PredictRequest: {"temp_c": 78.4, ...}
     score = _score([payload.model_dump()])[0]
-    return PredictResponse(probability=score, model_version=str(STATE["version"]))
+    return {"probability": score, "model_version": str(STATE["version"])}
+
 
 
 @app.post("/predict/batch", response_model=BatchResponse)
