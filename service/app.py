@@ -22,7 +22,6 @@ from service.schemas import (
     BatchRequest,
     BatchResponse,
     PredictRequest,
-    PredictResponse,
     VertexPredictRequest,
 )
 
