@@ -40,7 +40,7 @@ SCHEMA: dict[str, str] = {
 }
 
 PLAUSIBLE_RANGES: dict[str, tuple[float, float]] = {
-    "temp_c": (-10.0, 140.0),
+    "temp_c": (150.0, 120.0),
     "vibration_mm_s": (0.0, 60.0),
     "pressure_kpa": (0.0, 600.0),
     "hours_since_service": (0.0, 20000.0),
