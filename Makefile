@@ -10,7 +10,8 @@ SEED ?= 20260101
 .PHONY: help setup cloud-check data test portability-audit train image image-push reproduce verify clean teardown \
         tune compare reload-check serve serve-image loadtest drift inject-drift pipeline cost swap-check llm-eval llm-gate \
 				train-remote \ # For lab2
-				serve-image-push deploy loadtest-payload loadtest-coldstart loadtest-batch # For lab3
+				serve-image-push deploy loadtest-payload loadtest-coldstart loadtest-batch \ # For lab3
+				scan-secrets # For lab4
 
 help:
 	@grep -E "^[a-zA-Z_-]+:.*?## .*$$" $(MAKEFILE_LIST) | awk -F":.*?## " "{printf \"  %-20s %s\\n\", \$$1, \$$2}"
@@ -199,6 +200,9 @@ inject-drift: ## Shift a feature's distribution on purpose
 
 drift: ## Score drift against the reference window
 	python -m monitoring.drift --current data/current.csv
+
+scan-secrets:
+	python scripts/scan_secrets.py
 
 # --- Lab 5 -------------------------------------------------------------------
 pipeline: ## Compile pipeline/pipeline.yaml for your provider
