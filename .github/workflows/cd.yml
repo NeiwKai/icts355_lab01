@@ -77,6 +77,13 @@ jobs:
           print(adapter.push_image('itcs355-serve:${{ github.event.workflow_run.head_sha }}'))
           "
 
+      # --- EXPORT / UPLOAD MODEL ARTIFACT ------------------------------------
+      - name: Prepare model artifact for deployment
+        run: |
+          python scripts/make_dataset.py
+          python -m src.train --metrics-out reports/metrics.json
+          python scripts/export_model.py --out reports/model.joblib
+
       # --- DEPLOY TO STAGING --------------------------------------------------
       - name: Deploy to staging
         run: |
