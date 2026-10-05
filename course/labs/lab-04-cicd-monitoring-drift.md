@@ -162,18 +162,18 @@ would.** That left branch is the one roughly half of every cohort gets wrong.
 
 ## Deliverables checklist
 
-- [ ] Unit tests, 2+ data contract tests, 1+ model behaviour test, 1 integration test
-- [ ] README naming the incident each data contract test would have caught
-- [ ] CI pipeline running the full sequence, secrets via OIDC or a secret store
-- [ ] Images tagged by commit SHA
-- [ ] CD to staging on green, main only
-- [ ] **Evidence of the blocked bad commit** — failing run and the test that caught it
-- [ ] Dashboard with the five required signals
-- [ ] SLO: target, window, and error-budget response
-- [ ] Scheduled drift detector with a justified threshold, alerting to a real channel
-- [ ] Injected drift: alert evidence, timestamps, detection time
-- [ ] Five-line post-mortem
-- [ ] `make teardown` run
+- [x] Unit tests, 2+ data contract tests, 1+ model behaviour test, 1 integration test
+- [x] README naming the incident each data contract test would have caught
+- [x] CI pipeline running the full sequence, secrets via OIDC or a secret store
+- [x] Images tagged by commit SHA
+- [x] CD to staging on green, main only
+- [x] **Evidence of the blocked bad commit** — failing run and the test that caught it
+- [x] Dashboard with the five required signals
+- [x] SLO: target, window, and error-budget response
+- [x] Scheduled drift detector with a justified threshold, alerting to a real channel
+- [x] Injected drift: alert evidence, timestamps, detection time
+- [x] Five-line post-mortem
+- [x] `make teardown` run
 
 ## Acceptance criteria
 
