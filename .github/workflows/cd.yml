@@ -55,6 +55,13 @@ jobs:
           IDENTITY_REF=${{ secrets.GCP_DEPLOY_SA }}
           EOF
 
+      # --- EXPORT / UPLOAD MODEL ARTIFACT ------------------------------------
+      - name: Prepare model artifact for deployment
+        run: |
+          python scripts/make_dataset.py
+          python -m src.train --metrics-out reports/metrics.json
+          python scripts/export_model.py --out reports/model.joblib
+
       # --- BUILD LOCAL DOCKER IMAGE ---
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -67,32 +74,30 @@ jobs:
             -t itcs355-serve:${{ github.event.workflow_run.head_sha }} \
             --load .
 
-      # --- PUSH IMAGE --------------------------------------------------------
+      # --- PUSH IMAGE & CAPTURE REMOTE URI -----------------------------------
       - name: Push image
         run: |
           python -c "
           from src import config
           from cloudlayer.factory import get_adapter
           adapter = get_adapter(config.load())
-          print(adapter.push_image('itcs355-serve:${{ github.event.workflow_run.head_sha }}'))
+          remote_tag = adapter.push_image('itcs355-serve:${{ github.event.workflow_run.head_sha }}')
+          print('Pushed remote image:', remote_tag)
+          with open('/tmp/remote_tag.txt', 'w') as f:
+              f.write(remote_tag)
           "
 
-      # --- EXPORT / UPLOAD MODEL ARTIFACT ------------------------------------
-      - name: Prepare model artifact for deployment
-        run: |
-          python scripts/make_dataset.py
-          python -m src.train --metrics-out reports/metrics.json
-          python scripts/export_model.py --out reports/model.joblib
-
-      # --- DEPLOY TO STAGING --------------------------------------------------
+      # --- DEPLOY TO STAGING USING REMOTE URI --------------------------------
       - name: Deploy to staging
         run: |
           python -c "
           from src import config
           from cloudlayer.factory import get_adapter
+          with open('/tmp/remote_tag.txt') as f:
+              remote_tag = f.read().strip()
           cfg = config.load()
           adapter = get_adapter(cfg)
-          ep = adapter.deploy('itcs355-serve:${{ github.event.workflow_run.head_sha }}', 'itcs355-endpoint-staging', 'n1-standard-2')
+          ep = adapter.deploy(remote_tag, 'itcs355-endpoint-staging', 'n1-standard-2')
           print('Deployed to Endpoint:', ep)
           "
 
