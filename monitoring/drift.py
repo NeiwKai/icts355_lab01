@@ -20,14 +20,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import os
+import urllib.request
+
 # Conventional PSI reading, and it IS only conventional — it comes from credit scoring,
 # where features are stable and volumes are large. Your problem may warrant something
 # tighter or looser. todo(Lab 4): state your threshold and why, in your README.
 PSI_NO_CHANGE = 0.10
 PSI_MODERATE = 0.25
 
-import os
-import urllib.request
 
 def send_webhook_alert(breached_features: list[FeatureDrift], threshold: float) -> None:
     webhook_url = os.environ.get("ALERT_WEBHOOK_URL") or os.environ.get("SLACK_WEBHOOK_URL")
