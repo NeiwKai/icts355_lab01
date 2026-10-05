@@ -11,3 +11,4 @@ greenlet # fix docker build error
 smart_open[gcs] # For job to get data
 google-cloud-storage
 google-cloud-aiplatform
+prometheus_client # Require for Lab 4
