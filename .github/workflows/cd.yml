@@ -55,6 +55,18 @@ jobs:
           IDENTITY_REF=${{ secrets.GCP_DEPLOY_SA }}
           EOF
 
+      # --- BUILD LOCAL DOCKER IMAGE ---
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build serving image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            -f service/Dockerfile.serve \
+            -t itcs355-serve:${{ github.event.workflow_run.head_sha }} \
+            --load .
+
       # --- PUSH IMAGE --------------------------------------------------------
       - name: Push image
         run: |
