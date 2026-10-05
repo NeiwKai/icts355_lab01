@@ -26,3 +26,13 @@
 * **PSI Threshold Justification (`PSI = 0.25`):** 
   In our industrial machine telemetry pipeline, a PSI score $> 0.25$ indicates that over 25% of input feature mass has shifted into different quantile buckets compared to training baseline. Synthetic backtesting showed that at $\text{PSI} > 0.25$ on key sensor features (`temp_c`, `vibration_mm_s`), model prediction calibration degraded significantly, causing false-positive failure warnings to rise above 15%.
 * **Schedule & Alerting:** Configured via `.github/workflows/drift.yml` (running every 6 hours). Emits metrics and dispatches alerts directly to Slack/Discord webhooks when `PSI >= 0.25`.
+
+### Task 6
+
+## Five-Line Post-Motem
+
+What fired: Scheduled PSI drift alert on 'temp_c' (PSI: 3.30052 vs threshold: 0.25, KS: 0.67883).
+True cause: Upstream telemetry pipeline hardware sensor re-calibration/firmware update outputting uncalibrated raw values (+20°C offset).
+Retrain, roll back, or no action — and why: NO ACTION / DO NOT RETRAIN. Retraining on corrupted sensor data destroys a working baseline model; instead, fix the upstream data producer pipeline and re-calibrate the input normalizer.
+What this would have cost if unnoticed for a week: Approximately $42,000 in unnecessary plant maintenance shutdowns and false emergency machinery flags caused by artificial probability spikes (>0.95) across healthy equipment.
+How to prevent or detect it faster: Add raw physical upper/lower sanity checks at the ingestion layer (schema/contract tests) and increase drift job monitoring frequency from 6 hours to 15 minutes.
