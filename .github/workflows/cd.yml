@@ -70,31 +70,38 @@ jobs:
       # --- PUSH IMAGE --------------------------------------------------------
       - name: Push image
         run: |
-          python -c "from src import config; from cloudlayer.factory import get_adapter; \
-            print(get_adapter(config.load()).push_image('itcs355-serve:${{ github.event.workflow_run.head_sha }}'))"
+          python -c "
+          from src import config
+          from cloudlayer.factory import get_adapter
+          adapter = get_adapter(config.load())
+          print(adapter.push_image('itcs355-serve:${{ github.event.workflow_run.head_sha }}'))
+          "
 
       # --- DEPLOY TO STAGING --------------------------------------------------
       - name: Deploy to staging
         run: |
-          python -c "\
-            from src import config; \
-            from cloudlayer.factory import get_adapter; \
-            cfg = config.load(); \
-            adapter = get_adapter(cfg); \
-            ep = adapter.deploy('itcs355-serve:${{ github.event.workflow_run.head_sha }}', 'itcs355-endpoint-staging', 'n1-standard-2'); \
-            print('Deployed to Endpoint:', ep)"
+          python -c "
+          from src import config
+          from cloudlayer.factory import get_adapter
+          cfg = config.load()
+          adapter = get_adapter(cfg)
+          ep = adapter.deploy('itcs355-serve:${{ github.event.workflow_run.head_sha }}', 'itcs355-endpoint-staging', 'n1-standard-2')
+          print('Deployed to Endpoint:', ep)
+          "
 
       # --- SMOKE TEST --------------------------------------------------------
       - name: Smoke test
         run: |
-          python -c "\
-            from src import config; \
-            from cloudlayer.factory import get_adapter; \
-            cfg = config.load(strict=False); \
-            adapter = get_adapter(cfg); \
-            payloads = [ \
-              {'temp_c': 82.478, 'vibration_mm_s': 4.888, 'pressure_kpa': 308.557, 'hours_since_service': 1508.063, 'load_pct': 95.792, 'ambient_humidity': 63.407}, \
-              {'temp_c': 45.120, 'vibration_mm_s': 1.210, 'pressure_kpa': 101.325, 'hours_since_service': 120.500, 'load_pct': 40.000, 'ambient_humidity': 50.000}, \
-              {'temp_c': 95.800, 'vibration_mm_s': 8.500, 'pressure_kpa': 450.000, 'hours_since_service': 3500.000, 'load_pct': 99.100, 'ambient_humidity': 75.200} \
-            ]; \
-            [print('Smoke Test Response:', adapter.invoke('itcs355-endpoint-staging', p)) for p in payloads]"
+          python -c "
+          from src import config
+          from cloudlayer.factory import get_adapter
+          cfg = config.load(strict=False)
+          adapter = get_adapter(cfg)
+          payloads = [
+              {'temp_c': 82.478, 'vibration_mm_s': 4.888, 'pressure_kpa': 308.557, 'hours_since_service': 1508.063, 'load_pct': 95.792, 'ambient_humidity': 63.407},
+              {'temp_c': 45.120, 'vibration_mm_s': 1.210, 'pressure_kpa': 101.325, 'hours_since_service': 120.500, 'load_pct': 40.000, 'ambient_humidity': 50.000},
+              {'temp_c': 95.800, 'vibration_mm_s': 8.500, 'pressure_kpa': 450.000, 'hours_since_service': 3500.000, 'load_pct': 99.100, 'ambient_humidity': 75.200}
+          ]
+          for p in payloads:
+              print('Smoke Test Response:', adapter.invoke('itcs355-endpoint-staging', p))
+          "
