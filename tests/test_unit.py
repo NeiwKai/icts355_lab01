@@ -1,7 +1,6 @@
 """Unit tests — preprocessing and feature transformations."""
 import numpy as np
 import pandas as pd
-import pytest
 
 from src import data
 
