@@ -22,9 +22,33 @@ import pandas as pd
 
 # Conventional PSI reading, and it IS only conventional — it comes from credit scoring,
 # where features are stable and volumes are large. Your problem may warrant something
-# tighter or looser. TODO(Lab 4): state your threshold and why, in your README.
+# tighter or looser. todo(Lab 4): state your threshold and why, in your README.
 PSI_NO_CHANGE = 0.10
 PSI_MODERATE = 0.25
+
+import os
+import urllib.request
+
+def send_webhook_alert(breached_features: list[FeatureDrift], threshold: float) -> None:
+    webhook_url = os.environ.get("ALERT_WEBHOOK_URL") or os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print("ℹ️ No ALERT_WEBHOOK_URL set. Alert notification printed to console only.")
+        return
+
+    features_str = ", ".join(f"{r.feature} (PSI: {r.psi})" for r in breached_features)
+    payload = {
+        "text": f"🚨 *[MLOps Drift Alert]* {len(breached_features)} feature(s) exceeded threshold `{threshold}`: {features_str}"
+    }
+    try:
+        req = urllib.request.Request(
+            webhook_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req) as resp:
+            print(f"✅ Alert successfully sent to Webhook (Status {resp.status})")
+    except Exception as err:
+        print(f"⚠️ Failed to dispatch webhook alert: {err}")
 
 
 @dataclass
