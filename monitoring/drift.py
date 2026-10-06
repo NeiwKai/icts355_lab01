@@ -23,11 +23,8 @@ import pandas as pd
 import os
 import urllib.request
 
-# Conventional PSI reading, and it IS only conventional — it comes from credit scoring,
-# where features are stable and volumes are large. Your problem may warrant something
-# tighter or looser. todo(Lab 4): state your threshold and why, in your README.
-PSI_NO_CHANGE = 0.10
-PSI_MODERATE = 0.25
+PSI_NO_CHANGE = 0.05
+PSI_MODERATE = 0.20
 
 
 def send_webhook_alert(breached_features: list[FeatureDrift], threshold: float) -> None:
@@ -149,12 +146,10 @@ def main() -> int:
         print(f"{r.feature:<22}{r.psi:>10.5f}{r.ks_statistic:>10.5f}  {r.verdict}")
 
     if args.emit:
-        # TODO(Lab 4): implement emit_metric in your adapter, then this reaches
-        # CloudWatch / Azure Monitor / Cloud Monitoring and your dashboard shows it.
         from cloudlayer.factory import get_adapter
         adapter = get_adapter(config.load(strict=False))
         for r in results:
-            adapter.emit_metric(f"drift.psi.{r.feature}", r.psi)
+            adapter.emit_metric(f"drift_psi_{r.feature}", r.psi)
 
     breached = [r for r in results if r.psi >= args.threshold]
     if breached:

@@ -543,6 +543,76 @@ class GcpAdapter(CloudAdapter):
         return json.loads(response.text)
 
 
+    def emit_metric(
+        self,
+        name: str,
+        value: float,
+        labels: dict[str, str] | None = None,
+    ) -> None:
+        """Emit a custom time-series metric point to Google Cloud Monitoring.
+
+        Args:
+            name: Metric identifier (e.g., 'drift_psi_temp_c', 'prediction_latency_ms')
+            value: Numerical metric reading
+            labels: Optional key-value pairs for dimensional filtering
+        """
+        import time
+
+        try:
+            from google.cloud import monitoring_v3
+        except ImportError:
+            print(
+                "Warning: 'google-cloud-monitoring' package not installed. "
+                "Skipping metric emission. Install via 'pip install google-cloud-monitoring'."
+            )
+            return
+
+        try:
+            client = monitoring_v3.MetricServiceClient()
+            project_name = f"projects/{self.cfg.project_id}"
+
+            # 1. Sanitize name: GCP metric type cannot contain dots '.'
+            sanitized_name = name.replace(".", "_")
+            metric_type = f"custom.googleapis.com/itcs355/{sanitized_name}"
+
+            # 2. Combine default config tags with any provided runtime labels
+            metric_labels = self.cfg.tags(4)
+            if labels:
+                metric_labels.update(labels)
+
+            # Ensure all label key/values are string types
+            string_labels = {str(k): str(v) for k, v in metric_labels.items()}
+
+            # 3. Build TimeSeries payload
+            series = monitoring_v3.TimeSeries()
+            series.metric.type = metric_type
+            series.metric.labels.update(string_labels)
+
+            series.resource.type = "global"
+            series.resource.labels["project_id"] = self.cfg.project_id
+
+            # 4. Set timestamp point
+            now = time.time()
+            seconds = int(now)
+            nanos = int((now - seconds) * 10**9)
+
+            interval = monitoring_v3.TimeInterval(
+                end_time={"seconds": seconds, "nanos": nanos}
+            )
+
+            point = monitoring_v3.Point(
+                interval=interval,
+                value={"double_value": float(value)},
+            )
+            series.points = [point]
+
+            # 5. Send metric to Cloud Monitoring
+            client.create_time_series(name=project_name, time_series=[series])
+            print(f"Cloud Monitoring: Emitted metric '{metric_type}' = {value:.4f}")
+
+        except Exception as e:
+            print(f"Warning: Failed to emit metric '{name}' to Cloud Monitoring: {e}")
+
 
     # submit_training / register_model  -> Lab 2 (Vertex custom training + Model Registry)
     # deploy / invoke                   -> Lab 3 (Vertex Endpoint)
