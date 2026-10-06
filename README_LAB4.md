@@ -15,9 +15,10 @@
 
 ## Service Level Objective (SLO)
 
-* **Target:** 99.5% of successful `/predict` HTTP requests must return with a latency of $p95 < 150\text{ ms}$ and an HTTP status code of `200`.
-* **Measurement Window:** Measured continuously over a rolling 30-day window.
-* **Error Budget Response:** When the monthly 0.5% error budget is exhausted, deployments to staging and production are frozen, and engineering capacity is directed exclusively to reliability remediation until the error budget recovers.
+* **Availability Target:** **99.0%** of `/predict` requests returning successful status codes (excluding 4xx client errors) over a **30-day rolling window**.
+* **Latency Target:** **p95 < 200 ms** for `/predict` execution measured at the endpoint over a **7-day rolling window** (aligns with `loadtest/k6.js`).
+* **Freshness Target:** Production model age **≤ 30 days** measured continuously.
+* **Error Budget Response:** When the 1.0% error budget or 200ms latency budget is exhausted, non-critical feature deployments and staging rollouts are immediately frozen. Engineering resources are redirected entirely to reliability remediation, container auto-scaling, and rolling back to the last known-good Vertex AI model deployment until the error budget recovers.
 
 ### Task 5
 
