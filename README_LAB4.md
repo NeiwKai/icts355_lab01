@@ -28,6 +28,14 @@
   In our industrial machine telemetry pipeline, a PSI score $> 0.25$ indicates that over 25% of input feature mass has shifted into different quantile buckets compared to training baseline. Synthetic backtesting showed that at $\text{PSI} > 0.25$ on key sensor features (`temp_c`, `vibration_mm_s`), model prediction calibration degraded significantly, causing false-positive failure warnings to rise above 15%.
 * **Schedule & Alerting:** Configured via `.github/workflows/drift.yml` (running every 6 hours). Emits metrics and dispatches alerts directly to Slack/Discord webhooks when `PSI >= 0.25`.
 
+#### Reason in monitorint/drift.py
+* **`PSI_NO_CHANGE = 0.05`**: Strict upper boundary for stable baseline variance.
+* **`PSI_MODERATE = 0.20`**: Actionable threshold triggering distribution shift alerts.
+
+#### Threshold Rationale & Defense
+* **Tighter Safety Bounds (`PSI_NO_CHANGE = 0.05`):** Standard credit scoring uses `0.10` because financial populations are large and noisy. In high-precision telemetry, small shifts in sensor features (`temp_c`, `pressure_kpa`) quickly degrade model certainty. A tighter baseline threshold of `0.05` ensures early visibility into slight calibration shifts before model accuracy drops.
+* **Proactive Action Boundary (`PSI_MODERATE = 0.20`):** Instead of waiting for a severe `0.25` shift, setting `PSI_MODERATE = 0.20` triggers alerts earlier during sensor recalibrations or hardware degradation. Crossing `0.20` freezes deployment pipelines to staging and prompts upstream data pipeline inspection before corrupted prediction probabilities impact downstream operations.
+
 ### Task 6
 
 ## Five-Line Post-Motem
