@@ -1,7 +1,7 @@
 # Post-mortem — Injected Sensor Temperature Drift (`temp_c`)
 
 **What fired:**
-Scheduled PSI drift alert on `temp_c` (PSI: `3.3005` vs threshold: `0.25`, KS: `0.6788`) fired at 2026-10-06 14:30:00 UTC.
+Scheduled PSI drift alert on `temp_c` (PSI: `3.38333` vs threshold: `0.20`, KS: `0.24567`) fired at 2026-10-09 08:22:13 UTC.
 
 **True cause:**
 Broken upstream data pipeline / hardware sensor re-calibration bug (+20°C raw value offset introduced by firmware update).
