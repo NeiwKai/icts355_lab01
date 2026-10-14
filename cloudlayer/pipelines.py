@@ -26,34 +26,110 @@ def load_spec(path: Path = SPEC) -> dict[str, Any]:
 
 
 def compile_aws(spec: dict[str, Any]):
-    """SageMaker Pipelines.
-
-    Each step becomes a ProcessingStep or TrainingStep; `condition` becomes a
-    ConditionStep. Note that SageMaker's condition steps branch rather than abort, so
-    `on_failure: abort` needs a FailStep on the else branch — an asymmetry worth
-    mentioning in your Lab 5 write-up.
-    """
+    """SageMaker Pipelines."""
     raise NotImplementedError("TODO Lab 5: build a sagemaker.workflow.pipeline.Pipeline")
 
 
 def compile_azure(spec: dict[str, Any]):
-    """Azure ML Pipelines.
-
-    Each step becomes a command component; the DAG is expressed as a @pipeline function.
-    Conditions use azure.ai.ml.dsl.condition, which is closer to this YAML than the other
-    two providers' equivalents.
-    """
+    """Azure ML Pipelines."""
     raise NotImplementedError("TODO Lab 5: build an azure.ai.ml pipeline job")
 
 
-def compile_gcp(spec: dict[str, Any]):
-    """Vertex AI Pipelines.
+def compile_gcp(spec: dict[str, Any], output_path: str = "pipeline/pipeline_vertex.json"):
+    """Vertex AI Pipelines (Kubeflow Pipelines v2 Compiler)."""
+    from kfp import compiler, dsl, components
 
-    Kubeflow Pipelines underneath: steps become container components, conditions become
-    dsl.If blocks. The compiled artifact is a JSON file you submit, so your build step
-    produces a file rather than an object — different from the other two.
-    """
-    raise NotImplementedError("TODO Lab 5: compile a KFP pipeline and submit to Vertex")
+    pipeline_name = spec.get("name", "itcs355-training-pipeline")
+    steps = {step["name"]: step for step in spec.get("steps", [])}
+
+    # Factory for standard container components built via component YAML text (bypasses Python decorators completely)
+    def create_container_component(step_cfg: dict[str, Any]):
+        name = step_cfg["name"].replace("-", "_")
+        image = step_cfg["image"]
+        cmd = step_cfg["command"]
+
+        component_yaml = f"""
+name: {name}
+implementation:
+  container:
+    image: {image}
+    command: {cmd}
+"""
+        return components.load_component_from_text(component_yaml)
+
+    # Factory for evaluation component emitting an explicit string parameter output
+    def create_eval_component(step_cfg: dict[str, Any]):
+        name = step_cfg["name"].replace("-", "_")
+        image = step_cfg["image"]
+        cmd = step_cfg["command"]
+
+        component_yaml = f"""
+name: {name}
+outputs:
+  - {{name: gate_decision, type: String}}
+implementation:
+  container:
+    image: {image}
+    command: {cmd}
+    args:
+      - --output-gate-file
+      - {{outputPath: gate_decision}}
+"""
+        return components.load_component_from_text(component_yaml)
+
+    @dsl.pipeline(name=pipeline_name)
+    def kfp_dag():
+        executed_tasks = {}
+
+        # 1. Ingest
+        if "ingest" in steps:
+            comp = create_container_component(steps["ingest"])
+            executed_tasks["ingest"] = comp()
+
+        # 2. Validate
+        if "validate" in steps:
+            comp = create_container_component(steps["validate"])
+            task = comp()
+            if "ingest" in executed_tasks:
+                task.after(executed_tasks["ingest"])
+            executed_tasks["validate"] = task
+
+        # 3. Train
+        if "train" in steps:
+            comp = create_container_component(steps["train"])
+            task = comp()
+            if "validate" in executed_tasks:
+                task.after(executed_tasks["validate"])
+            executed_tasks["train"] = task
+
+        # 4. Evaluate
+        if "evaluate" in steps:
+            comp = create_eval_component(steps["evaluate"])
+            task = comp()
+            if "train" in executed_tasks:
+                task.after(executed_tasks["train"])
+            executed_tasks["evaluate"] = task
+
+        # 5 & 6. Conditional Gate: Register and Deploy Staging
+        if "evaluate" in executed_tasks and "register" in steps:
+            eval_task = executed_tasks["evaluate"]
+
+            # Gate condition evaluation on task output string
+            with dsl.If(eval_task.outputs["gate_decision"] == "pass", name="gate-passed-condition"):
+                reg_comp = create_container_component(steps["register"])
+                reg_task = reg_comp()
+
+                if "deploy_staging" in steps:
+                    dep_comp = create_container_component(steps["deploy_staging"])
+                    dep_comp().after(reg_task)
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    compiler.Compiler().compile(
+        pipeline_func=kfp_dag,
+        package_path=output_path,
+    )
+    print(f"✅ Successfully compiled neutral DAG to Vertex AI KFP spec: {output_path}")
+    return output_path
 
 
 COMPILERS = {"aws": compile_aws, "azure": compile_azure, "gcp": compile_gcp}
