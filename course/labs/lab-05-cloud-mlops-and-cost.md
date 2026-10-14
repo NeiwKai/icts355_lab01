@@ -90,10 +90,10 @@ a retrain?**
 Compare three strategies for *your* system:
 
 | Strategy | When it is right | How it fails |
-|---|---|---|
-| Fixed schedule | | |
-| Data volume threshold | | |
-| Drift-triggered | | |
+| :--- | :--- | :--- |
+| **Fixed schedule** *(e.g., Weekly on Sunday at 02:00 UTC)* | Right for predictable, low-cadence equipment wear cycles where operational drift accumulates linearly over operational hours without sudden schema shifts. | Fails by wasting cloud compute costs on unnecessary retraining runs when no new data has arrived, or by reacting too slowly when sudden hardware sensor decalibration (+20°C offset) occurs mid-week. |
+| **Data volume threshold** *(e.g., Retrain after 50,000 new inferences)* | Right for high-throughput prediction services where model performance relies on strict sample sizes for statistical convergence. | Fails during low-production periods (e.g., plant maintenance shutdowns) where no retraining occurs for months, allowing minor seasonal feature distribution shifts to go undetected. |
+| **Drift-triggered** *(e.g., Retrain when PSI ≥ 0.20 on `temp_c`)* | Right for dynamic environments where incoming feature distributions shift unpredictably due to operational workload changes or seasonal shifts. | **Catastrophically fails when upstream data is corrupted** (e.g., uncalibrated sensor firmware). Auto-retraining bakes the +20°C corrupted artifact into the model baseline, permanently destroying a working model. |
 
 Fill the table for your specific problem, not in general. Then state which you chose and what the
 worst case looks like — including the scenario where drift-triggered retraining on corrupted upstream
@@ -248,15 +248,15 @@ the arithmetic is the easy part.
 
 ## Deliverables checklist
 
-- [ ] Managed pipeline running the full path with a real evaluation gate
-- [ ] Three scoped identities, documented, with evidence of what broke when you removed a permission
-- [ ] Scheduled retraining plus the three-strategy comparison filled in for your system
-- [ ] `make portability-audit` returning zero provider strings in `src/`
-- [ ] Second provider's `upload`, `download`, and `invoke` implemented and demonstrated
-- [ ] Half-page portability write-up including an honest verdict
-- [ ] `reports/lab5-cost.md` with all six sections
-- [ ] One applied optimisation with before and after figures
-- [ ] Teardown verified, screenshot submitted
+- [x] Managed pipeline running the full path with a real evaluation gate
+- [x] Three scoped identities, documented, with evidence of what broke when you removed a permission
+- [x] Scheduled retraining plus the three-strategy comparison filled in for your system
+- [x] `make portability-audit` returning zero provider strings in `src/`
+- [x] Second provider's `upload`, `download`, and `invoke` implemented and demonstrated
+- [x] Half-page portability write-up including an honest verdict
+- [x] `reports/lab5-cost.md` with all six sections
+- [x] One applied optimisation with before and after figures
+- [x] Teardown verified, screenshot submitted
 - [ ] Total term spend under 800 THB
 - [ ] Golden set of 10+ cases in `evals/golden/`, including grounding, guardrail, injection, and insufficient-input cases
 - [ ] A recorded baseline, and a gate run against a changed prompt or model showing what moved
