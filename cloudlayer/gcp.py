@@ -613,7 +613,6 @@ class GcpAdapter(CloudAdapter):
         except Exception as e:
             print(f"Warning: Failed to emit metric '{name}' to Cloud Monitoring: {e}")
 
-
     def teardown(self, tags: dict[str, str]) -> list[str]:
         """Delete every resource carrying these tags. Returns what was deleted.
 
@@ -638,9 +637,7 @@ class GcpAdapter(CloudAdapter):
         try:
             jobs = aiplatform.CustomJob.list()
             for job in jobs:
-                # Check if job state is active
                 if job.state in active_states:
-                    # Match labels in Python instead of using GCP API server-side filter
                     job_labels = getattr(job, "labels", {}) or {}
                     if all(job_labels.get(k) == v for k, v in tags.items()):
                         res_name = job.resource_name
@@ -672,6 +669,26 @@ class GcpAdapter(CloudAdapter):
                     deleted_resources.append(f"Model: {res_name}")
         except Exception as e:
             print(f"Error deleting models: {e}")
+
+        # 4. Delete Scheduled Pipeline Jobs (Lab 5 Task 3 / Task 6)
+        try:
+            schedules = aiplatform.PipelineJobSchedule.list()
+            for schedule in schedules:
+                # Fallback to display_name or labels check
+                s_labels = getattr(schedule, "labels", {}) or {}
+                
+                # Check tag match via labels, OR check if tag values exist in display_name
+                matches_tags = (
+                    all(s_labels.get(k) == v for k, v in tags.items()) if s_labels 
+                    else any(v in getattr(schedule, "display_name", "") for v in tags.values())
+                )
+
+                if matches_tags:
+                    res_name = schedule.resource_name
+                    schedule.delete()
+                    deleted_resources.append(f"PipelineJobSchedule: {res_name}")
+        except Exception as e:
+            print(f"Error deleting pipeline schedules: {e}")
 
         return deleted_resources
 
