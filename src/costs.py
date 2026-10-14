@@ -26,6 +26,7 @@ PRICE_TABLE: dict[str, dict[str, float]] = {
         "n1-standard-4": 8.93,
         "e2-standard-4": 6.30,
         "n4-highcpu-2":  3.60,
+        "n1-standard-2": 3.83,
     },
 }
 
