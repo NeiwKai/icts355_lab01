@@ -214,7 +214,7 @@ llm-eval: ## Run the LLM golden set against recorded responses (offline, free)
 
 llm-gate: ## Prove the gate fails on a degraded set — expected to exit non-zero
 	python scripts/llm_eval.py --out reports/llm_eval-baseline.json >/dev/null
-	python scripts/llm_eval.py --responses evals/fixtures/triage-regressed.jsonl \
+	python scripts/llm_eval.py --live \
 	  --out reports/llm_eval.json --baseline reports/llm_eval-baseline.json
 
 cost: ## Build the cost report
