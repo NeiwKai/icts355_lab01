@@ -44,6 +44,7 @@ TOKEN_PRICE_TABLE: dict[str, dict[str, tuple[float, float]]] = {
         "small": (8.5, 34.0),
         "medium": (105.0, 525.0),
         "large": (525.0, 2625.0),
+        "gemma-3-4b-it-q4_k_m": (2.8, 5.6),
     },
 }
 
