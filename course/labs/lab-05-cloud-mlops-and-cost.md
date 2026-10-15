@@ -257,11 +257,11 @@ the arithmetic is the easy part.
 - [x] `reports/lab5-cost.md` with all six sections
 - [x] One applied optimisation with before and after figures
 - [x] Teardown verified, screenshot submitted
-- [ ] Total term spend under 800 THB
-- [ ] Golden set of 10+ cases in `evals/golden/`, including grounding, guardrail, injection, and insufficient-input cases
-- [ ] A recorded baseline, and a gate run against a changed prompt or model showing what moved
-- [ ] One guardrail failure demonstrated on demand, with the case added to the golden set
-- [ ] Three token-cost figures with working shown, and the one-paragraph budget defence
+- [x] Total term spend under 800 THB
+- [x] Golden set of 10+ cases in `evals/golden/`, including grounding, guardrail, injection, and insufficient-input cases
+- [x] A recorded baseline, and a gate run against a changed prompt or model showing what moved
+- [x] One guardrail failure demonstrated on demand, with the case added to the golden set
+- [x] Three token-cost figures with working shown, and the one-paragraph budget defence
 
 ## Acceptance criteria
 
